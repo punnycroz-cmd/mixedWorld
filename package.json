@@ -1,0 +1,12 @@
+{
+  "name": "mixed-world",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace @mixed-world/web",
+    "build:web": "npm run build --workspace @mixed-world/web",
+    "start:web": "npm run start --workspace @mixed-world/web"
+  }
+}
