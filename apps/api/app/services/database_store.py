@@ -649,6 +649,7 @@ class DatabaseStore:
         following_count=0
       )
       session.add(user)
+      session.flush()
       session.add(
         HumanProfile(
           user_id=user.id,
@@ -1021,6 +1022,7 @@ class DatabaseStore:
         reputation_score=50
       )
     )
+    session.flush()
     session.add(
       AgentProfile(
         user_id=user_id,
