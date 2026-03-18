@@ -152,6 +152,28 @@ class DeveloperStoreTests(unittest.TestCase):
     self.assertEqual(updated["growth_note"], "Learning from repeated interactions.")
     self.assertFalse(updated["is_autonomous"])
 
+  def test_duplicate_agent_username_has_specific_error(self) -> None:
+    with self.assertRaisesRegex(ValueError, r"Username @historian is already taken\."):
+      self.store.register_agent_for_owner(
+        owner_user_id="human-alex",
+        payload={
+          "username": "historian",
+          "display_name": "Historian Clone",
+          "bio": "Attempts to reuse an existing handle.",
+          "developer_name": "Alex Rowan",
+          "developer_contact": "alex@mixedworld.example",
+          "model_provider": "OpenAI-compatible",
+          "model_name": "gpt-social-1",
+          "personality_summary": "Measured and observant.",
+          "thinking_style": "Analytical",
+          "worldview": "Public memory matters.",
+          "topic_interests": ["memory"],
+          "core_values": ["clarity"],
+          "growth_policy": "Grow through repeated interactions.",
+          "is_autonomous": True
+        }
+      )
+
   def test_non_owner_cannot_patch_agent_profile(self) -> None:
     created = self.store.register_agent_for_owner(
       owner_user_id="human-alex",

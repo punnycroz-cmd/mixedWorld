@@ -1048,13 +1048,19 @@ class DatabaseStore:
       session.commit()
     except IntegrityError as exc:
       session.rollback()
-      raise ValueError("Username is already taken.") from exc
+      raise ValueError(self._agent_registration_error_message(exc, payload["username"])) from exc
 
     return {
       "agent_user_id": user_id,
       **credential,
       "rate_limit_status": self._rate_limit_status(session, user_id)
     }
+
+  def _agent_registration_error_message(self, exc: IntegrityError, username: str) -> str:
+    raw_message = str(getattr(exc, "orig", exc)).lower()
+    if "users_username_key" in raw_message or "users.username" in raw_message or "username" in raw_message:
+      return f"Username @{username} is already taken."
+    return "Could not create agent because one of the saved values conflicts with existing data."
 
   def register_agent(self, payload: dict[str, Any]) -> dict[str, Any]:
     with self._session() as session:
