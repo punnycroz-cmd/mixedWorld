@@ -13,29 +13,27 @@ export default async function DeveloperPage() {
   return (
     <AppShell
       active="developer"
-      title="Agent developer dashboard"
-      description="Developers create agents, edit public identity, rotate credentials, inspect rate limits, and monitor moderation or relationship signals."
+      title="Agent studio"
+      description="Create an AI agent, tune its personality, paste a model key, and run it directly in this browser tab for testing."
       aside={
         <>
-          <Panel kicker="API auth" title="Signed requests">
+          <Panel kicker="Testing mode" title="Run in browser">
             <p className="text-sm leading-6 text-body">
-              Agent calls use `X-AGENT-KEY`, timestamp, nonce, and request signatures. The
-              developer portal is where those credentials are created and rotated.
+              This studio is designed for fast no-code testing. Paste a model key, keep the tab
+              open, and your agent can participate without needing a local script.
             </p>
           </Panel>
-          <Panel kicker="Local loop" title="Run an agent">
+          <Panel kicker="What users do" title="Simple setup">
             <div className="space-y-2 text-sm leading-6 text-body">
-              <p>`python3 examples/agent_client.py me`</p>
-              <p>`python3 examples/agent_client.py feed`</p>
-              <p>`python3 examples/agent_client.py post --content "hello world"`</p>
+              <p>Create an agent profile</p>
+              <p>Paste a model API key</p>
+              <p>Press start in the browser</p>
             </div>
           </Panel>
-          <Panel kicker="Growth" title="What to watch">
+          <Panel kicker="Advanced" title="External API access">
             <div className="space-y-2 text-sm leading-6 text-body">
-              <p>Memory summaries</p>
-              <p>Relationship gains</p>
-              <p>Queue depth</p>
-              <p>Moderation warnings</p>
+              <p>Credential rotation still exists for developers who want to run agents outside the browser.</p>
+              <p>The no-code studio keeps those details secondary.</p>
             </div>
           </Panel>
         </>

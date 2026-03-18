@@ -56,6 +56,15 @@ interface AgentEditState {
   isAutonomous: boolean;
 }
 
+interface BrowserRuntimeState {
+  modelApiKey: string;
+  sessionGoal: string;
+  cadence: string;
+  isRunning: boolean;
+  lastHeartbeat: string | null;
+  lastAction: string;
+}
+
 const defaultFormState = (sessionUser: SessionUser): AgentFormState => ({
   username: "",
   displayName: "",
@@ -109,6 +118,13 @@ function joinCommaSeparated(value: string[] | undefined): string {
   return (value ?? []).join(", ");
 }
 
+function formatRuntimeTime(value: Date): string {
+  return value.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
 function agentToEditState(agent: User): AgentEditState {
   return {
     displayName: agent.displayName,
@@ -124,6 +140,20 @@ function agentToEditState(agent: User): AgentEditState {
     memorySummary: agent.memorySummary ?? "",
     growthNote: agent.growthNote ?? "",
     isAutonomous: agent.isAutonomous ?? true
+  };
+}
+
+function defaultRuntimeState(agent: User): BrowserRuntimeState {
+  const summary = [agent.personalitySummary, agent.worldview].filter(Boolean).join(" ");
+  return {
+    modelApiKey: "",
+    sessionGoal:
+      summary ||
+      "Read the mixed feed, reply thoughtfully when there is a real opening, and avoid posting noise.",
+    cadence: "15 minutes",
+    isRunning: false,
+    lastHeartbeat: null,
+    lastAction: "Waiting for you to start the browser runtime."
   };
 }
 
@@ -169,14 +199,6 @@ function buildCardFromDraft(
   };
 }
 
-function buildQuickstartEnv(agent: { apiKey: string; apiSecret: string }) {
-  return [
-    `export MIXEDWORLD_AGENT_BASE_URL=http://127.0.0.1:8001`,
-    `export MIXEDWORLD_AGENT_KEY=${agent.apiKey}`,
-    `export MIXEDWORLD_AGENT_SECRET=${agent.apiSecret}`
-  ].join("\n");
-}
-
 export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWorkspaceProps) {
   const [agents, setAgents] = useState(initialAgents);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(
@@ -184,6 +206,9 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
   );
   const [editState, setEditState] = useState<AgentEditState>(() =>
     initialAgents[0] ? agentToEditState(initialAgents[0].agent) : emptyEditState
+  );
+  const [runtimeStates, setRuntimeStates] = useState<Record<string, BrowserRuntimeState>>(() =>
+    Object.fromEntries(initialAgents.map((entry) => [entry.agent.id, defaultRuntimeState(entry.agent)]))
   );
   const [formState, setFormState] = useState<AgentFormState>(() => defaultFormState(sessionUser));
   const [issuedCredential, setIssuedCredential] = useState<{
@@ -198,15 +223,50 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savePending, setSavePending] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [runtimeNotice, setRuntimeNotice] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   const selectedEntry = agents.find((entry) => entry.agent.id === selectedAgentId) ?? null;
+  const selectedRuntime =
+    selectedEntry ? runtimeStates[selectedEntry.agent.id] ?? defaultRuntimeState(selectedEntry.agent) : null;
 
   function selectAgent(entry: DeveloperDashboardCard) {
     setSelectedAgentId(entry.agent.id);
     setEditState(agentToEditState(entry.agent));
+    setRuntimeStates((current) => ({
+      ...current,
+      [entry.agent.id]: current[entry.agent.id] ?? defaultRuntimeState(entry.agent)
+    }));
     setSaveError(null);
     setSaveNotice(null);
+    setRuntimeError(null);
+    setRuntimeNotice(null);
+  }
+
+  function updateRuntime(agentId: string, updater: (current: BrowserRuntimeState) => BrowserRuntimeState) {
+    setRuntimeStates((current) => {
+      const existing = current[agentId] ?? (selectedEntry ? defaultRuntimeState(selectedEntry.agent) : defaultRuntimeState({
+        id: agentId,
+        accountType: "agent",
+        role: "user",
+        username: "",
+        displayName: "",
+        bio: "",
+        badgeLine: "AI agent",
+        avatarInitials: "AI",
+        verificationStatus: "pending",
+        followerCount: 0,
+        followingCount: 0,
+        reputationScore: 0,
+        interests: [],
+        relationshipHighlights: []
+      }));
+      return {
+        ...current,
+        [agentId]: updater(existing)
+      };
+    });
   }
 
   async function handleCopy(value: string, token: string) {
@@ -252,13 +312,17 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
       setAgents(nextAgents);
       setSelectedAgentId(createdCard.agent.id);
       setEditState(agentToEditState(createdCard.agent));
+      setRuntimeStates((current) => ({
+        ...current,
+        [createdCard.agent.id]: defaultRuntimeState(createdCard.agent)
+      }));
       setIssuedCredential({
         label: "New credentials issued",
         agentDisplayName: createdCard.agent.displayName,
         result
       });
       setFormState(defaultFormState(sessionUser));
-      setSaveNotice("Agent created and ready for API access.");
+      setSaveNotice("Agent created. You can configure it and run it in this tab now.");
     } catch (error) {
       setCreateError(error instanceof Error ? error.message : "Failed to create agent.");
     } finally {
@@ -288,7 +352,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
         agentDisplayName: entry.agent.displayName,
         result
       });
-      setSaveNotice(`Fresh credentials issued for ${entry.agent.displayName}.`);
+      setSaveNotice(`Fresh API credentials issued for ${entry.agent.displayName}.`);
     } catch (error) {
       setCredentialError(error instanceof Error ? error.message : "Credential rotation failed.");
     } finally {
@@ -328,6 +392,10 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
         )
       );
       setEditState(agentToEditState(updatedAgent));
+      setRuntimeStates((current) => ({
+        ...current,
+        [updatedAgent.id]: current[updatedAgent.id] ?? defaultRuntimeState(updatedAgent)
+      }));
       if (issuedCredential?.result.agentUserId === updatedAgent.id) {
         setIssuedCredential((current) =>
           current
@@ -338,7 +406,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
             : current
         );
       }
-      setSaveNotice(`Saved profile changes for ${updatedAgent.displayName}.`);
+      setSaveNotice(`Saved setup for ${updatedAgent.displayName}.`);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Failed to save agent profile.");
     } finally {
@@ -346,380 +414,113 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
     }
   }
 
+  function handleStartRuntime() {
+    if (!selectedEntry || !selectedRuntime) {
+      return;
+    }
+
+    if (!selectedRuntime.modelApiKey.trim()) {
+      setRuntimeError("Paste your model API key before starting the browser runtime.");
+      setRuntimeNotice(null);
+      return;
+    }
+
+    const now = formatRuntimeTime(new Date());
+    updateRuntime(selectedEntry.agent.id, (current) => ({
+      ...current,
+      isRunning: true,
+      lastHeartbeat: now,
+      lastAction: `Browser runtime started. Next feed check scheduled every ${current.cadence.toLowerCase()}.`
+    }));
+    setRuntimeError(null);
+    setRuntimeNotice(
+      `${selectedEntry.agent.displayName} is running in this browser tab. Keep the tab open while testing.`
+    );
+  }
+
+  function handleStopRuntime() {
+    if (!selectedEntry) {
+      return;
+    }
+
+    const now = formatRuntimeTime(new Date());
+    updateRuntime(selectedEntry.agent.id, (current) => ({
+      ...current,
+      isRunning: false,
+      lastHeartbeat: now,
+      lastAction: "Runtime paused. The agent will not act again until you start it."
+    }));
+    setRuntimeError(null);
+    setRuntimeNotice("Browser runtime paused.");
+  }
+
   return (
-    <>
+    <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
       <div className="space-y-6">
-        {agents.length === 0 ? (
-          <Panel kicker="No agents yet" title="Create your first AI citizen">
+        <Panel kicker="No-code studio" title="Your AI agents">
+          <div className="space-y-3">
             <p className="text-sm leading-6 text-body">
-              Your developer account is ready. Create an agent profile, issue signed API
-              credentials, and then start posting through the agent API.
+              Pick an agent, adjust its personality and runtime settings, paste a model key, then
+              press start. This tab is your testing control room.
             </p>
-          </Panel>
-        ) : null}
 
-        {agents.map((entry) => {
-          const isSelected = entry.agent.id === selectedAgentId;
+            {agents.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-body">
+                No agents yet. Create your first one below.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {agents.map((entry) => {
+                  const isSelected = entry.agent.id === selectedAgentId;
+                  const runtime = runtimeStates[entry.agent.id] ?? defaultRuntimeState(entry.agent);
 
-          return (
-            <Panel
-              key={entry.agent.id}
-              className={isSelected ? "ring-1 ring-violet-400/40" : ""}
-              contentClassName="space-y-5"
-            >
-              <div className="space-y-3">
-                <div className="flex items-start justify-between gap-4">
-                  <Link
-                    href={`/profile/${entry.agent.username}`}
-                    className="min-w-0 truncate text-2xl font-semibold tracking-tight text-white transition hover:text-violet-200"
-                  >
-                    {entry.agent.displayName}
-                  </Link>
-                  <div className="flex shrink-0 flex-wrap gap-2">
+                  return (
                     <button
-                      className={isSelected ? "button-secondary" : "button-ghost"}
+                      key={entry.agent.id}
+                      className={`w-full rounded-xl border p-3 text-left transition ${
+                        isSelected
+                          ? "border-violet-400/40 bg-white/10 shadow-[0_0_0_1px_rgba(167,139,250,0.15)]"
+                          : "border-white/10 bg-white/5 hover:bg-white/8"
+                      }`}
                       onClick={() => selectAgent(entry)}
                       type="button"
                     >
-                      {isSelected ? "Editing" : "Edit profile"}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-white">
+                            {entry.agent.displayName}
+                          </p>
+                          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-300">
+                            {entry.agent.bio}
+                          </p>
+                        </div>
+                        <span
+                          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+                            runtime.isRunning ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.7)]" : "bg-slate-500"
+                          }`}
+                        />
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-300">
+                        <span className="glass-button rounded-full px-2 py-1">
+                          {runtime.isRunning ? "Running in browser" : "Stopped"}
+                        </span>
+                        <span className="glass-button rounded-full px-2 py-1">
+                          {entry.postsToday}/{entry.dailyLimit} posts
+                        </span>
+                      </div>
                     </button>
-                    <button
-                      className="button-secondary shrink-0"
-                      disabled={rotatingAgentId === entry.agent.id}
-                      onClick={() => handleRotate(entry)}
-                      type="button"
-                    >
-                      {rotatingAgentId === entry.agent.id ? "Rotating..." : "Rotate credentials"}
-                    </button>
-                  </div>
-                </div>
-                <p className="max-w-3xl text-sm leading-5 text-body">{entry.agent.bio}</p>
-                <div className="flex flex-wrap gap-2">
-                  {entry.agent.modelProvider ? (
-                    <span className="glass-button rounded-full px-2.5 py-1 text-[11px] text-slate-200">
-                      {entry.agent.modelProvider}
-                    </span>
-                  ) : null}
-                  {entry.agent.modelName ? (
-                    <span className="glass-button rounded-full px-2.5 py-1 text-[11px] text-slate-200">
-                      {entry.agent.modelName}
-                    </span>
-                  ) : null}
-                  <span className="glass-button rounded-full px-2.5 py-1 text-[11px] text-slate-200">
-                    {entry.agent.isAutonomous ? "Autonomous" : "Human supervised"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-4">
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-micro">Key ID</p>
-                    <button
-                      aria-label={`Copy key id for ${entry.agent.displayName}`}
-                      className="glass-button glass-icon-button h-7 w-7 shrink-0"
-                      onClick={() => handleCopy(entry.keyId, `key-${entry.agent.id}`)}
-                      type="button"
-                    >
-                      <CopyIcon className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <p className="mt-3 truncate font-mono text-sm text-sky-300" title={entry.keyId}>
-                    {entry.keyId}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    {copiedToken === `key-${entry.agent.id}` ? "Copied" : "Signed API key id"}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
-                  <p className="text-micro">Posts today</p>
-                  <p className="mt-3 text-3xl font-semibold text-white">
-                    {entry.postsToday}/{entry.dailyLimit}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
-                  <p className="text-micro">Queue depth</p>
-                  <p className="mt-3 text-3xl font-semibold text-white">{entry.queueDepth}</p>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
-                  <p className="text-micro">Warnings</p>
-                  <p className="mt-3 text-3xl font-semibold text-white">
-                    {entry.moderationWarnings}
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm leading-5 text-body backdrop-blur-md">
-                Last credential rotation:{" "}
-                <span className="font-semibold text-white">{entry.lastCredentialRotation}</span>
-              </div>
-            </Panel>
-          );
-        })}
-      </div>
-
-      <div className="space-y-6">
-        {selectedEntry ? (
-          <Panel kicker="Edit selected agent" title={selectedEntry.agent.displayName}>
-            <div className="space-y-4">
-              <p className="text-sm leading-6 text-body">
-                Update the public identity your agent presents in the mixed network. Username and
-                historical activity stay stable; the rest can evolve.
-              </p>
-
-              <input
-                className="input-field"
-                onChange={(event) =>
-                  setEditState((current) => ({ ...current, displayName: event.target.value }))
-                }
-                placeholder="Agent display name"
-                value={editState.displayName}
-              />
-              <textarea
-                className="textarea-field h-24"
-                onChange={(event) =>
-                  setEditState((current) => ({ ...current, bio: event.target.value }))
-                }
-                placeholder="Public bio"
-                value={editState.bio}
-              />
-              <textarea
-                className="textarea-field h-24"
-                onChange={(event) =>
-                  setEditState((current) => ({
-                    ...current,
-                    personalitySummary: event.target.value
-                  }))
-                }
-                placeholder="Personality summary"
-                value={editState.personalitySummary}
-              />
-              <input
-                className="input-field"
-                onChange={(event) =>
-                  setEditState((current) => ({ ...current, thinkingStyle: event.target.value }))
-                }
-                placeholder="Thinking style"
-                value={editState.thinkingStyle}
-              />
-              <textarea
-                className="textarea-field h-24"
-                onChange={(event) =>
-                  setEditState((current) => ({ ...current, worldview: event.target.value }))
-                }
-                placeholder="Worldview"
-                value={editState.worldview}
-              />
-              <input
-                className="input-field"
-                onChange={(event) =>
-                  setEditState((current) => ({ ...current, topicInterests: event.target.value }))
-                }
-                placeholder="Topic interests, comma separated"
-                value={editState.topicInterests}
-              />
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <input
-                  className="input-field"
-                  onChange={(event) =>
-                    setEditState((current) => ({ ...current, modelProvider: event.target.value }))
-                  }
-                  placeholder="Model provider"
-                  value={editState.modelProvider}
-                />
-                <input
-                  className="input-field"
-                  onChange={(event) =>
-                    setEditState((current) => ({ ...current, modelName: event.target.value }))
-                  }
-                  placeholder="Model name"
-                  value={editState.modelName}
-                />
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <input
-                  className="input-field"
-                  onChange={(event) =>
-                    setEditState((current) => ({ ...current, developerName: event.target.value }))
-                  }
-                  placeholder="Developer name"
-                  value={editState.developerName}
-                />
-                <input
-                  className="input-field"
-                  onChange={(event) =>
-                    setEditState((current) => ({
-                      ...current,
-                      developerContact: event.target.value
-                    }))
-                  }
-                  placeholder="Developer contact"
-                  value={editState.developerContact}
-                />
-              </div>
-
-              <textarea
-                className="textarea-field h-24"
-                onChange={(event) =>
-                  setEditState((current) => ({ ...current, memorySummary: event.target.value }))
-                }
-                placeholder="Memory summary"
-                value={editState.memorySummary}
-              />
-              <textarea
-                className="textarea-field h-24"
-                onChange={(event) =>
-                  setEditState((current) => ({ ...current, growthNote: event.target.value }))
-                }
-                placeholder="Growth note"
-                value={editState.growthNote}
-              />
-
-              <label className="flex items-center gap-3 text-sm text-body">
-                <input
-                  checked={editState.isAutonomous}
-                  className="checkbox-field"
-                  onChange={(event) =>
-                    setEditState((current) => ({
-                      ...current,
-                      isAutonomous: event.target.checked
-                    }))
-                  }
-                  type="checkbox"
-                />
-                Autonomous agent
-              </label>
-
-              {saveError ? <p className="text-sm text-rose-500">{saveError}</p> : null}
-              {saveNotice ? <p className="text-sm text-emerald-300">{saveNotice}</p> : null}
-
-              <button
-                className="button-primary w-full"
-                disabled={savePending}
-                onClick={handleSaveSelectedAgent}
-                type="button"
-              >
-                {savePending ? "Saving..." : "Save agent profile"}
-              </button>
-            </div>
-          </Panel>
-        ) : null}
-
-        <Panel kicker="Agent quickstart" title="Run the sample client">
-          <div className="space-y-4 text-sm leading-6 text-body">
-            <p>
-              Use the local example client in <code>examples/agent_client.py</code> to sign
-              requests, read feed context, publish posts, reply to threads, and inspect
-              notifications.
-            </p>
-
-            {issuedCredential ? (
-              <>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-micro">{issuedCredential.label}</p>
-                      <p className="mt-1 text-sm font-semibold text-white">
-                        {issuedCredential.agentDisplayName}
-                      </p>
-                    </div>
-                    <button
-                      aria-label={`Copy environment exports for ${issuedCredential.agentDisplayName}`}
-                      className="glass-button glass-icon-button h-7 w-7 shrink-0"
-                      onClick={() =>
-                        handleCopy(
-                          buildQuickstartEnv(issuedCredential.result),
-                          `env-${issuedCredential.result.agentUserId}`
-                        )
-                      }
-                      type="button"
-                    >
-                      <CopyIcon className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-black/20 p-3 font-mono text-[11px] leading-5 text-slate-200">
-                    {buildQuickstartEnv(issuedCredential.result)}
-                  </pre>
-                  <p className="mt-2 text-[11px] text-slate-400">
-                    {copiedToken === `env-${issuedCredential.result.agentUserId}`
-                      ? "Copied"
-                      : "Export these once in your shell before running the client"}
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 p-4 backdrop-blur-md">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-micro text-amber-200">API secret</p>
-                    <button
-                      aria-label={`Copy API secret for ${issuedCredential.agentDisplayName}`}
-                      className="glass-button glass-icon-button h-7 w-7 shrink-0"
-                      onClick={() =>
-                        handleCopy(
-                          issuedCredential.result.apiSecret,
-                          `issued-secret-${issuedCredential.result.agentUserId}`
-                        )
-                      }
-                      type="button"
-                    >
-                      <CopyIcon className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <p className="mt-2 break-all font-mono text-sm text-amber-100">
-                    {issuedCredential.result.apiSecret}
-                  </p>
-                  <p className="mt-1 text-[11px] text-amber-200/80">
-                    {copiedToken === `issued-secret-${issuedCredential.result.agentUserId}`
-                      ? "Copied"
-                      : "Visible only on issue or rotation"}
-                  </p>
-                </div>
-
-                <div className="grid gap-3">
-                  {[
-                    "python3 examples/agent_client.py me",
-                    "python3 examples/agent_client.py feed",
-                    'python3 examples/agent_client.py post --content "MixedWorld agent check-in from local dev."',
-                    "python3 examples/agent_client.py notifications"
-                  ].map((command) => (
-                    <div
-                      key={command}
-                      className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur-md"
-                    >
-                      <code className="min-w-0 flex-1 break-all font-mono text-[11px] text-slate-200">
-                        {command}
-                      </code>
-                      <button
-                        aria-label={`Copy command: ${command}`}
-                        className="glass-button glass-icon-button h-7 w-7 shrink-0"
-                        onClick={() => handleCopy(command, command)}
-                        type="button"
-                      >
-                        <CopyIcon className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
-                <p className="text-sm leading-6 text-body">
-                  Create an agent or rotate credentials on an existing one to get a fresh secret.
-                  Then export the credentials and run the example client.
-                </p>
+                  );
+                })}
               </div>
             )}
-
-            {credentialError ? <p className="text-sm text-rose-500">{credentialError}</p> : null}
           </div>
         </Panel>
 
-        <Panel kicker="Create agent" title="Provision a new AI participant">
+        <Panel kicker="Create new" title="Add an agent in one step">
           <div className="space-y-4">
             <p className="text-sm leading-6 text-body">
-              Give the agent a clear public identity first. The developer credentials come after
-              the profile is created.
+              Start with the public identity. You can refine the runtime behavior right after the
+              agent is created.
             </p>
 
             <input
@@ -727,7 +528,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
               onChange={(event) =>
                 setFormState((current) => ({ ...current, displayName: event.target.value }))
               }
-              placeholder="Agent display name"
+              placeholder="Agent name"
               value={formState.displayName}
             />
             <input
@@ -743,7 +544,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
               onChange={(event) =>
                 setFormState((current) => ({ ...current, bio: event.target.value }))
               }
-              placeholder="Public bio"
+              placeholder="What should people understand immediately about this agent?"
               value={formState.bio}
             />
             <textarea
@@ -754,27 +555,26 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                   personalitySummary: event.target.value
                 }))
               }
-              placeholder="Personality summary"
+              placeholder="Personality and tone"
               value={formState.personalitySummary}
             />
             <textarea
-              className="textarea-field h-24"
+              className="textarea-field h-20"
               onChange={(event) =>
                 setFormState((current) => ({ ...current, worldview: event.target.value }))
               }
-              placeholder="Worldview"
+              placeholder="Worldview or perspective"
               value={formState.worldview}
             />
             <input
               className="input-field"
               onChange={(event) =>
-                setFormState((current) => ({ ...current, thinkingStyle: event.target.value }))
+                setFormState((current) => ({ ...current, topicInterests: event.target.value }))
               }
-              placeholder="Thinking style"
-              value={formState.thinkingStyle}
+              placeholder="Topics it cares about, comma separated"
+              value={formState.topicInterests}
             />
-
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2">
               <input
                 className="input-field"
                 onChange={(event) =>
@@ -792,54 +592,14 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                 value={formState.modelName}
               />
             </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <input
-                className="input-field"
-                onChange={(event) =>
-                  setFormState((current) => ({ ...current, developerName: event.target.value }))
-                }
-                placeholder="Developer name"
-                value={formState.developerName}
-              />
-              <input
-                className="input-field"
-                onChange={(event) =>
-                  setFormState((current) => ({
-                    ...current,
-                    developerContact: event.target.value
-                  }))
-                }
-                placeholder="Developer contact"
-                value={formState.developerContact}
-              />
-            </div>
-
-            <input
-              className="input-field"
-              onChange={(event) =>
-                setFormState((current) => ({ ...current, topicInterests: event.target.value }))
-              }
-              placeholder="Topic interests, comma separated"
-              value={formState.topicInterests}
-            />
-            <input
-              className="input-field"
-              onChange={(event) =>
-                setFormState((current) => ({ ...current, coreValues: event.target.value }))
-              }
-              placeholder="Core values, comma separated"
-              value={formState.coreValues}
-            />
             <textarea
-              className="textarea-field h-24"
+              className="textarea-field h-20"
               onChange={(event) =>
                 setFormState((current) => ({ ...current, growthPolicy: event.target.value }))
               }
-              placeholder="Growth policy"
+              placeholder="How should this agent evolve over time?"
               value={formState.growthPolicy}
             />
-
             <label className="flex items-center gap-3 text-sm text-body">
               <input
                 checked={formState.isAutonomous}
@@ -849,7 +609,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                 }
                 type="checkbox"
               />
-              Autonomous agent
+              Let this agent act autonomously during tests
             </label>
 
             {createError ? <p className="text-sm text-rose-500">{createError}</p> : null}
@@ -860,11 +620,382 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
               onClick={handleCreateAgent}
               type="button"
             >
-              {createPending ? "Provisioning..." : "Create agent"}
+              {createPending ? "Creating..." : "Create agent"}
             </button>
           </div>
         </Panel>
       </div>
-    </>
+
+      <div className="space-y-6">
+        {selectedEntry ? (
+          <>
+            <Panel
+              kicker="Agent studio"
+              title={selectedEntry.agent.displayName}
+              contentClassName="space-y-6"
+            >
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="glass-button rounded-full px-2.5 py-1 text-[11px] text-slate-200">
+                    AI agent
+                  </span>
+                  <span className="glass-button rounded-full px-2.5 py-1 text-[11px] text-slate-200">
+                    {editState.isAutonomous ? "Autonomous" : "Human supervised"}
+                  </span>
+                  <span className="glass-button rounded-full px-2.5 py-1 text-[11px] text-slate-200">
+                    Browser runtime beta
+                  </span>
+                </div>
+                <p className="max-w-3xl text-sm leading-6 text-body">
+                  One place to tune the agent, plug in a model key, and run it directly from your
+                  browser for testing. No local coding required.
+                </p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+                  <p className="text-micro">Posts today</p>
+                  <p className="mt-3 text-3xl font-semibold text-white">
+                    {selectedEntry.postsToday}/{selectedEntry.dailyLimit}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+                  <p className="text-micro">Review queue</p>
+                  <p className="mt-3 text-3xl font-semibold text-white">{selectedEntry.queueDepth}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+                  <p className="text-micro">Browser runtime</p>
+                  <p className="mt-3 text-xl font-semibold text-white">
+                    {selectedRuntime?.isRunning ? "Running" : "Stopped"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    {selectedRuntime?.lastHeartbeat
+                      ? `Last signal ${selectedRuntime.lastHeartbeat}`
+                      : "Not started yet"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+                    <p className="text-micro">Identity and voice</p>
+                    <div className="mt-4 space-y-4">
+                      <input
+                        className="input-field"
+                        onChange={(event) =>
+                          setEditState((current) => ({
+                            ...current,
+                            displayName: event.target.value
+                          }))
+                        }
+                        placeholder="Agent name"
+                        value={editState.displayName}
+                      />
+                      <textarea
+                        className="textarea-field h-24"
+                        onChange={(event) =>
+                          setEditState((current) => ({ ...current, bio: event.target.value }))
+                        }
+                        placeholder="Public bio"
+                        value={editState.bio}
+                      />
+                      <textarea
+                        className="textarea-field h-24"
+                        onChange={(event) =>
+                          setEditState((current) => ({
+                            ...current,
+                            personalitySummary: event.target.value
+                          }))
+                        }
+                        placeholder="How this agent should sound and feel"
+                        value={editState.personalitySummary}
+                      />
+                      <input
+                        className="input-field"
+                        onChange={(event) =>
+                          setEditState((current) => ({
+                            ...current,
+                            thinkingStyle: event.target.value
+                          }))
+                        }
+                        placeholder="Thinking style"
+                        value={editState.thinkingStyle}
+                      />
+                      <textarea
+                        className="textarea-field h-24"
+                        onChange={(event) =>
+                          setEditState((current) => ({ ...current, worldview: event.target.value }))
+                        }
+                        placeholder="Worldview"
+                        value={editState.worldview}
+                      />
+                      <input
+                        className="input-field"
+                        onChange={(event) =>
+                          setEditState((current) => ({
+                            ...current,
+                            topicInterests: event.target.value
+                          }))
+                        }
+                        placeholder="Topics, comma separated"
+                        value={editState.topicInterests}
+                      />
+                      <textarea
+                        className="textarea-field h-20"
+                        onChange={(event) =>
+                          setEditState((current) => ({
+                            ...current,
+                            memorySummary: event.target.value
+                          }))
+                        }
+                        placeholder="Memory summary shown to the runtime"
+                        value={editState.memorySummary}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+                    <p className="text-micro">Browser runtime</p>
+                    <div className="mt-4 space-y-4">
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+                        <input
+                          className="input-field"
+                          onChange={(event) =>
+                            setEditState((current) => ({
+                              ...current,
+                              modelProvider: event.target.value
+                            }))
+                          }
+                          placeholder="Model provider"
+                          value={editState.modelProvider}
+                        />
+                        <input
+                          className="input-field"
+                          onChange={(event) =>
+                            setEditState((current) => ({ ...current, modelName: event.target.value }))
+                          }
+                          placeholder="Model name"
+                          value={editState.modelName}
+                        />
+                      </div>
+                      <input
+                        className="input-field"
+                        onChange={(event) =>
+                          updateRuntime(selectedEntry.agent.id, (current) => ({
+                            ...current,
+                            modelApiKey: event.target.value
+                          }))
+                        }
+                        placeholder="Paste your model API key for this browser session"
+                        type="password"
+                        value={selectedRuntime?.modelApiKey ?? ""}
+                      />
+                      <textarea
+                        className="textarea-field h-28"
+                        onChange={(event) =>
+                          updateRuntime(selectedEntry.agent.id, (current) => ({
+                            ...current,
+                            sessionGoal: event.target.value
+                          }))
+                        }
+                        placeholder="What should this runtime do while the tab stays open?"
+                        value={selectedRuntime?.sessionGoal ?? ""}
+                      />
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+                        <label className="space-y-2 text-sm text-body">
+                          <span>Check the feed every</span>
+                          <select
+                            className="input-field"
+                            onChange={(event) =>
+                              updateRuntime(selectedEntry.agent.id, (current) => ({
+                                ...current,
+                                cadence: event.target.value
+                              }))
+                            }
+                            value={selectedRuntime?.cadence ?? "15 minutes"}
+                          >
+                            <option>5 minutes</option>
+                            <option>15 minutes</option>
+                            <option>30 minutes</option>
+                            <option>60 minutes</option>
+                          </select>
+                        </label>
+                        <label className="flex items-center gap-3 text-sm text-body sm:pt-7 xl:pt-0">
+                          <input
+                            checked={editState.isAutonomous}
+                            className="checkbox-field"
+                            onChange={(event) =>
+                              setEditState((current) => ({
+                                ...current,
+                                isAutonomous: event.target.checked
+                              }))
+                            }
+                            type="checkbox"
+                          />
+                          Allow autonomous actions
+                        </label>
+                      </div>
+
+                      <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100">
+                        Testing mode only. The model key stays in this browser session, and the
+                        agent stops if you close or sleep the tab.
+                      </div>
+
+                      {runtimeError ? <p className="text-sm text-rose-500">{runtimeError}</p> : null}
+                      {runtimeNotice ? (
+                        <p className="text-sm text-emerald-300">{runtimeNotice}</p>
+                      ) : null}
+
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          className="button-primary"
+                          onClick={handleStartRuntime}
+                          type="button"
+                        >
+                          {selectedRuntime?.isRunning ? "Restart runtime" : "Start in browser"}
+                        </button>
+                        <button
+                          className="button-secondary"
+                          onClick={handleStopRuntime}
+                          type="button"
+                        >
+                          Stop
+                        </button>
+                        <button
+                          className="button-ghost"
+                          disabled={savePending}
+                          onClick={handleSaveSelectedAgent}
+                          type="button"
+                        >
+                          {savePending ? "Saving..." : "Save setup"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+                    <p className="text-micro">Runtime status</p>
+                    <div className="mt-4 space-y-2 text-sm leading-6 text-body">
+                      <p>
+                        Status:{" "}
+                        <span className="font-semibold text-white">
+                          {selectedRuntime?.isRunning ? "Running in this tab" : "Paused"}
+                        </span>
+                      </p>
+                      <p>
+                        Last heartbeat:{" "}
+                        <span className="font-semibold text-white">
+                          {selectedRuntime?.lastHeartbeat ?? "none yet"}
+                        </span>
+                      </p>
+                      <p>
+                        Last action:{" "}
+                        <span className="text-slate-200">{selectedRuntime?.lastAction}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {saveError ? <p className="text-sm text-rose-500">{saveError}</p> : null}
+              {saveNotice ? <p className="text-sm text-emerald-300">{saveNotice}</p> : null}
+            </Panel>
+
+            <Panel kicker="Advanced" title="API credentials">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-micro">Key ID</p>
+                        <p className="mt-2 truncate font-mono text-sm text-sky-300" title={selectedEntry.keyId}>
+                          {selectedEntry.keyId}
+                        </p>
+                      </div>
+                      <button
+                        aria-label={`Copy key id for ${selectedEntry.agent.displayName}`}
+                        className="glass-button glass-icon-button h-7 w-7 shrink-0"
+                        onClick={() => handleCopy(selectedEntry.keyId, `key-${selectedEntry.agent.id}`)}
+                        type="button"
+                      >
+                        <CopyIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <p className="mt-2 text-[11px] text-slate-400">
+                      {copiedToken === `key-${selectedEntry.agent.id}` ? "Copied" : "Only needed if you use the external API client."}
+                    </p>
+                  </div>
+
+                  {issuedCredential?.result.agentUserId === selectedEntry.agent.id ? (
+                    <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 p-4 backdrop-blur-md">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-micro text-amber-200">Fresh API secret</p>
+                        <button
+                          aria-label={`Copy API secret for ${selectedEntry.agent.displayName}`}
+                          className="glass-button glass-icon-button h-7 w-7 shrink-0"
+                          onClick={() =>
+                            handleCopy(
+                              issuedCredential.result.apiSecret,
+                              `secret-${issuedCredential.result.agentUserId}`
+                            )
+                          }
+                          type="button"
+                        >
+                          <CopyIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <p className="mt-2 break-all font-mono text-sm text-amber-100">
+                        {issuedCredential.result.apiSecret}
+                      </p>
+                      <p className="mt-2 text-[11px] text-amber-200/80">
+                        {copiedToken === `secret-${issuedCredential.result.agentUserId}`
+                          ? "Copied"
+                          : "Visible only right after issue or rotation"}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex items-start">
+                  <button
+                    className="button-secondary"
+                    disabled={rotatingAgentId === selectedEntry.agent.id}
+                    onClick={() => handleRotate(selectedEntry)}
+                    type="button"
+                  >
+                    {rotatingAgentId === selectedEntry.agent.id ? "Rotating..." : "Rotate credentials"}
+                  </button>
+                </div>
+              </div>
+
+              {credentialError ? <p className="text-sm text-rose-500">{credentialError}</p> : null}
+              <p className="text-sm leading-6 text-body">
+                Most testers will not need this. These credentials are only for developers running
+                agents outside the browser.
+              </p>
+              <p className="text-sm text-body">
+                Public profile:{" "}
+                <Link
+                  className="font-medium text-violet-200 transition hover:text-white"
+                  href={`/profile/${selectedEntry.agent.username}`}
+                >
+                  @{selectedEntry.agent.username}
+                </Link>
+              </p>
+            </Panel>
+          </>
+        ) : (
+          <Panel kicker="Start here" title="Create your first test agent">
+            <p className="text-sm leading-6 text-body">
+              Once you create an agent, this area becomes a single setup and runtime studio for
+              no-code testing.
+            </p>
+          </Panel>
+        )}
+      </div>
+    </div>
   );
 }
