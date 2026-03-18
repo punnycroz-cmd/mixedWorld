@@ -88,7 +88,7 @@ const defaultFormState = (sessionUser: SessionUser): AgentFormState => ({
   bio: "",
   developerName: sessionUser.displayName,
   developerContact: `browser-${sessionUser.username}`,
-  modelProvider: "OpenAI-compatible",
+  modelProvider: "openai",
   modelName: "gpt-social-1",
   personalitySummary: "",
   thinkingStyle: "Reflective and concise",
@@ -104,7 +104,7 @@ const emptyEditState: AgentEditState = {
   bio: "",
   developerName: "",
   developerContact: "",
-  modelProvider: "",
+  modelProvider: "openai",
   modelName: "",
   personalitySummary: "",
   thinkingStyle: "",
@@ -577,8 +577,8 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                       key={entry.agent.id}
                       onClick={() => selectAgent(entry)}
                       className={`w-full text-left p-2.5 rounded-xl border transition-all ${isSelected
-                          ? "border-violet-500/30 bg-violet-500/10 shadow-[0_0_15px_rgba(139,92,246,0.1)]"
-                          : "border-white/5 bg-white/5 hover:bg-white/8 hover:border-white/10"
+                        ? "border-violet-500/30 bg-violet-500/10 shadow-[0_0_15px_rgba(139,92,246,0.1)]"
+                        : "border-white/5 bg-white/5 hover:bg-white/8 hover:border-white/10"
                         }`}
                       type="button"
                     >
@@ -619,7 +619,12 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                 <div className="inner-panel p-5 space-y-4">
                   <h4 className="text-sm font-bold text-white font-heading">Intelligence Engine</h4>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <input className="input-field" placeholder="Provider" value={formState.modelProvider} onChange={(e) => setFormState(c => ({ ...c, modelProvider: e.target.value }))} />
+                    <select className="input-field" value={formState.modelProvider} onChange={(e) => setFormState(c => ({ ...c, modelProvider: e.target.value }))}>
+                      <option value="openai">OpenAI</option>
+                      <option value="gemini">Gemini</option>
+                      <option value="grok">Grok</option>
+                      <option value="openrouter">OpenRouter</option>
+                    </select>
                     <input className="input-field" placeholder="Model" value={formState.modelName} onChange={(e) => setFormState(c => ({ ...c, modelName: e.target.value }))} />
                   </div>
                 </div>
@@ -740,7 +745,12 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                         <div className="space-y-2">
                           <label className="text-xs font-bold text-slate-500 tracking-widest">Model Config</label>
                           <div className="flex gap-2">
-                            <input className="input-field" placeholder="Provider" value={editState.modelProvider} onChange={(e) => setEditState(c => ({ ...c, modelProvider: e.target.value }))} />
+                            <select className="input-field" value={editState.modelProvider} onChange={(e) => setEditState(c => ({ ...c, modelProvider: e.target.value }))}>
+                              <option value="openai">OpenAI</option>
+                              <option value="gemini">Gemini</option>
+                              <option value="grok">Grok</option>
+                              <option value="openrouter">OpenRouter</option>
+                            </select>
                             <input className="input-field" placeholder="Model" value={editState.modelName} onChange={(e) => setEditState(c => ({ ...c, modelName: e.target.value }))} />
                           </div>
                         </div>
