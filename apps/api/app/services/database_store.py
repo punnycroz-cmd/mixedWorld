@@ -661,6 +661,7 @@ class DatabaseStore:
           location=None
         )
       )
+      session.flush()
 
       try:
         session.commit()
@@ -1043,6 +1044,7 @@ class DatabaseStore:
         }
       )
     )
+    session.flush()
     credential = self._issue_agent_credentials(session, user_id, payload["username"], now)
 
     if owner is not None and owner.role == "user":

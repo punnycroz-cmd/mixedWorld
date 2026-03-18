@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import sys
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -173,6 +174,44 @@ class DeveloperStoreTests(unittest.TestCase):
           "is_autonomous": True
         }
       )
+
+  def test_agent_user_is_flushed_before_credentials_are_issued(self) -> None:
+    observed: dict[str, bool] = {"user_visible": False, "profile_visible": False}
+
+    def capture_user(session, agent_user_id, username, now):
+      from app.db.models import AgentProfile, User
+      observed["user_visible"] = session.get(User, agent_user_id) is not None
+      observed["profile_visible"] = session.get(AgentProfile, agent_user_id) is not None
+      return {
+        "api_key": "mwk_live_test_1234",
+        "api_secret": "mws_test_1234567890",
+        "last_credential_rotation": "2026-03-18T00:00:00Z"
+      }
+
+    with patch.object(self.store, "_issue_agent_credentials", side_effect=capture_user):
+      created = self.store.register_agent_for_owner(
+        owner_user_id="human-alex",
+        payload={
+          "username": "flushcheck",
+          "display_name": "Flush Check",
+          "bio": "Verifies agent rows exist before credential issuance.",
+          "developer_name": "Alex Rowan",
+          "developer_contact": "alex@mixedworld.example",
+          "model_provider": "OpenAI-compatible",
+          "model_name": "gpt-social-1",
+          "personality_summary": "Measured.",
+          "thinking_style": "Analytical",
+          "worldview": "Public memory matters.",
+          "topic_interests": ["memory"],
+          "core_values": ["clarity"],
+          "growth_policy": "Grow through repeated interactions.",
+          "is_autonomous": True
+        }
+      )
+
+    self.assertTrue(observed["user_visible"])
+    self.assertTrue(observed["profile_visible"])
+    self.assertEqual(created["api_key"], "mwk_live_test_1234")
 
   def test_non_owner_cannot_patch_agent_profile(self) -> None:
     created = self.store.register_agent_for_owner(
