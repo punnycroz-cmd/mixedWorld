@@ -18,6 +18,30 @@ import type {
   User
 } from "@/lib/types";
 
+const PROVIDER_MODELS: Record<string, { id: string; name: string }[]> = {
+  openai: [
+    { id: "gpt-4o", name: "GPT-4o" },
+    { id: "gpt-4o-mini", name: "GPT-4o Mini" }
+  ],
+  gemini: [
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" }
+  ],
+  grok: [
+    { id: "grok-beta", name: "Grok Beta" },
+    { id: "grok-vision-beta", name: "Grok Vision Beta" },
+    { id: "grok-2-latest", name: "Grok 2" }
+  ],
+  openrouter: [
+    { id: "meta-llama/llama-3-8b-instruct:free", name: "Llama 3 8B (Free)" },
+    { id: "mistralai/mistral-7b-instruct:free", name: "Mistral 7B (Free)" },
+    { id: "meta-llama/llama-3.1-8b-instruct:free", name: "Llama 3.1 8B (Free)" },
+    { id: "google/gemma-2-9b-it:free", name: "Gemma 2 9B (Free)" },
+    { id: "nousresearch/hermes-3-llama-3.1-405b", name: "Hermes 3 405B" },
+    { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet" }
+  ]
+};
+
 interface DeveloperWorkspaceProps {
   initialAgents: DeveloperDashboardCard[];
   sessionUser: SessionUser;
@@ -619,13 +643,24 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                 <div className="inner-panel p-5 space-y-4">
                   <h4 className="text-sm font-bold text-white font-heading">Intelligence Engine</h4>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <select className="input-field" value={formState.modelProvider} onChange={(e) => setFormState(c => ({ ...c, modelProvider: e.target.value }))}>
+                    <select className="input-field" value={formState.modelProvider} onChange={(e) => {
+                      const provider = e.target.value;
+                      setFormState(c => ({ ...c, modelProvider: provider, modelName: PROVIDER_MODELS[provider]?.[0]?.id ?? "" }));
+                    }}>
                       <option value="openai">OpenAI</option>
                       <option value="gemini">Gemini</option>
                       <option value="grok">Grok</option>
                       <option value="openrouter">OpenRouter</option>
                     </select>
-                    <input className="input-field" placeholder="Model" value={formState.modelName} onChange={(e) => setFormState(c => ({ ...c, modelName: e.target.value }))} />
+                    {PROVIDER_MODELS[formState.modelProvider] ? (
+                      <select className="input-field" value={formState.modelName} onChange={(e) => setFormState(c => ({ ...c, modelName: e.target.value }))}>
+                        {PROVIDER_MODELS[formState.modelProvider].map(m => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input className="input-field" placeholder="Model" value={formState.modelName} onChange={(e) => setFormState(c => ({ ...c, modelName: e.target.value }))} />
+                    )}
                   </div>
                 </div>
               </div>
@@ -745,13 +780,24 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                         <div className="space-y-2">
                           <label className="text-xs font-bold text-slate-500 tracking-widest">Model Config</label>
                           <div className="flex gap-2">
-                            <select className="input-field" value={editState.modelProvider} onChange={(e) => setEditState(c => ({ ...c, modelProvider: e.target.value }))}>
+                            <select className="input-field" value={editState.modelProvider} onChange={(e) => {
+                              const provider = e.target.value;
+                              setEditState(c => ({ ...c, modelProvider: provider, modelName: PROVIDER_MODELS[provider]?.[0]?.id ?? "" }));
+                            }}>
                               <option value="openai">OpenAI</option>
                               <option value="gemini">Gemini</option>
                               <option value="grok">Grok</option>
                               <option value="openrouter">OpenRouter</option>
                             </select>
-                            <input className="input-field" placeholder="Model" value={editState.modelName} onChange={(e) => setEditState(c => ({ ...c, modelName: e.target.value }))} />
+                            {PROVIDER_MODELS[editState.modelProvider] ? (
+                              <select className="input-field" value={editState.modelName} onChange={(e) => setEditState(c => ({ ...c, modelName: e.target.value }))}>
+                                {PROVIDER_MODELS[editState.modelProvider].map(m => (
+                                  <option key={m.id} value={m.id}>{m.name}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input className="input-field" placeholder="Model" value={editState.modelName} onChange={(e) => setEditState(c => ({ ...c, modelName: e.target.value }))} />
+                            )}
                           </div>
                         </div>
                       </div>
