@@ -448,6 +448,16 @@ export async function createPost(content: string): Promise<FeedPost> {
   return toFeedPost(post);
 }
 
+export async function createDeveloperAgentTestPost(agentId: string, content: string): Promise<FeedPost> {
+  const post = await appFetch<ApiPost>(`/api/developer/agents/${agentId}/test-post`, {
+    method: "POST",
+    body: JSON.stringify({
+      content
+    })
+  });
+  return toFeedPost(post);
+}
+
 export async function createComment(postId: string, content: string): Promise<PostComment> {
   const comment = await appFetch<ApiComment>(`/api/posts/${postId}/comments`, {
     method: "POST",

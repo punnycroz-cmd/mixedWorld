@@ -8,7 +8,8 @@ import { Panel } from "@/components/panel";
 import {
   createDeveloperAgent,
   rotateDeveloperAgentCredentials,
-  updateDeveloperAgentProfile
+  updateDeveloperAgentProfile,
+  createDeveloperAgentTestPost
 } from "@/lib/api";
 import type {
   AgentCredentialResult,
@@ -304,6 +305,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [runtimeNotice, setRuntimeNotice] = useState<string | null>(null);
+  const [testPending, setTestPending] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   const selectedEntry = agents.find((entry) => entry.agent.id === selectedAgentId) ?? null;
@@ -563,6 +565,111 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
     setRuntimeNotice("Browser runtime paused.");
   }
 
+  async function handleTestConnection() {
+    if (!selectedEntry || !selectedRuntime) return;
+    setRuntimeError(null);
+    setRuntimeNotice(null);
+    setTestPending(true);
+
+    const provider = editState.modelProvider;
+    const key = selectedRuntime.modelApiKey.trim();
+    if (!key) {
+      setRuntimeError("Paste your model API key to test the connection.");
+      setTestPending(false);
+      return;
+    }
+
+    try {
+      let success = false;
+      if (provider === "openai" || provider === "grok" || provider === "openrouter") {
+        const url = provider === "openai" ? "https://api.openai.com/v1/models"
+          : provider === "grok" ? "https://api.x.ai/v1/models"
+            : "https://openrouter.ai/api/v1/models";
+        const res = await fetch(url, { headers: { "Authorization": `Bearer ${key}` } });
+        success = res.ok;
+      } else if (provider === "gemini") {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+        success = res.ok;
+      }
+
+      if (success) {
+        setRuntimeNotice("Connection successful! API key is valid.");
+      } else {
+        setRuntimeError("Connection failed. Please check your API key and provider.");
+      }
+    } catch (e) {
+      setRuntimeError("Connection failed. Network error.");
+    } finally {
+      setTestPending(false);
+    }
+  }
+
+  async function handleTestPost() {
+    if (!selectedEntry || !selectedRuntime) return;
+    setRuntimeError(null);
+    setRuntimeNotice(null);
+    setTestPending(true);
+
+    const provider = editState.modelProvider;
+    const model = editState.modelName;
+    const key = selectedRuntime.modelApiKey.trim();
+    if (!key || !model) {
+      setRuntimeError("API key and Model setup are required to test posting.");
+      setTestPending(false);
+      return;
+    }
+
+    setRuntimeNotice("Generating test post...");
+
+    try {
+      let contentText = "";
+      const prompt = `Write a short test social media post (under 280 chars). Adopt this persona: ${editState.personalitySummary.slice(0, 300)}. Just output the text of the post.`;
+
+      if (provider === "openai" || provider === "grok" || provider === "openrouter") {
+        const url = provider === "openai" ? "https://api.openai.com/v1/chat/completions"
+          : provider === "grok" ? "https://api.x.ai/v1/chat/completions"
+            : "https://openrouter.ai/api/v1/chat/completions";
+
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${key}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: 150
+          })
+        });
+        if (!res.ok) throw new Error("AI provider API responded with error.");
+        const data = await res.json();
+        contentText = data.choices?.[0]?.message?.content || "";
+      } else if (provider === "gemini") {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }]
+          })
+        });
+        if (!res.ok) throw new Error("Gemini API responded with error.");
+        const data = await res.json();
+        contentText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      }
+
+      if (!contentText.trim()) throw new Error("Empty response from AI");
+
+      await createDeveloperAgentTestPost(selectedEntry.agent.id, contentText.trim());
+      setRuntimeNotice("Test post published successfully to the feed!");
+    } catch (e) {
+      console.error(e);
+      setRuntimeError(e instanceof Error ? `Failed to post: ${e.message}` : "Failed to create a test post.");
+    } finally {
+      setTestPending(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8 min-h-[80vh]">
       {/* Navigation Sidebar */}
@@ -809,10 +916,17 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                   </div>
                   <div className="space-y-6">
                     <div className="inner-panel p-5 space-y-4">
+                      <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Setup & Test</h4>
+                      <div className="flex flex-col gap-2">
+                        <button className="button-secondary w-full" disabled={testPending || selectedRuntime?.isRunning} onClick={handleTestConnection} type="button">{testPending ? "Testing..." : "Test Connection"}</button>
+                        <button className="button-secondary w-full" disabled={testPending || selectedRuntime?.isRunning} onClick={handleTestPost} type="button">{testPending ? "Generating..." : "Test Agent Post"}</button>
+                      </div>
+                    </div>
+                    <div className="inner-panel p-5 space-y-4">
                       <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Runtime State</h4>
                       <div className="flex flex-col gap-2">
                         <button className="button-primary w-full" onClick={handleStartRuntime} type="button">{selectedRuntime?.isRunning ? "Restart Engine" : "Start Engine"}</button>
-                        <button className="button-secondary w-full" onClick={handleStopRuntime} type="button">Stop Engine</button>
+                        <button className="button-secondary w-full" disabled={!selectedRuntime?.isRunning} onClick={handleStopRuntime} type="button">Stop Engine</button>
                       </div>
                       <div className="pt-4 border-t border-white/5 space-y-2 text-[11px]">
                         <div className="flex justify-between"><span className="text-slate-500">Status</span><span className={selectedRuntime?.isRunning ? "text-emerald-400 font-bold" : "text-amber-400"}>{selectedRuntime?.isRunning ? "Live" : "Idle"}</span></div>
