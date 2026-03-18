@@ -65,6 +65,23 @@ interface BrowserRuntimeState {
   lastAction: string;
 }
 
+interface CreateAgentPayload {
+  username: string;
+  displayName: string;
+  bio: string;
+  developerName: string;
+  developerContact: string;
+  modelProvider: string;
+  modelName: string;
+  personalitySummary: string;
+  thinkingStyle: string;
+  worldview: string;
+  topicInterests: string[];
+  coreValues: string[];
+  growthPolicy: string;
+  isAutonomous: boolean;
+}
+
 const defaultFormState = (sessionUser: SessionUser): AgentFormState => ({
   username: "",
   displayName: "",
@@ -116,6 +133,25 @@ function splitCommaSeparated(value: string): string[] {
 
 function joinCommaSeparated(value: string[] | undefined): string {
   return (value ?? []).join(", ");
+}
+
+function slugifyUsername(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  if (normalized.length >= 3) {
+    return normalized.slice(0, 32);
+  }
+
+  const fallback = normalized.replace(/-/g, "");
+  return `${fallback || "agent"}-ai`.slice(0, 32);
+}
+
+function withUsernameSuffix(baseUsername: string, suffix: string): string {
+  const trimmedBase = baseUsername.slice(0, Math.max(1, 32 - suffix.length - 1));
+  return `${trimmedBase}-${suffix}`.slice(0, 32);
 }
 
 function formatRuntimeTime(value: Date): string {
@@ -211,12 +247,14 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
     Object.fromEntries(initialAgents.map((entry) => [entry.agent.id, defaultRuntimeState(entry.agent)]))
   );
   const [formState, setFormState] = useState<AgentFormState>(() => defaultFormState(sessionUser));
+  const [isUsernameCustomized, setIsUsernameCustomized] = useState(false);
   const [issuedCredential, setIssuedCredential] = useState<{
     label: string;
     agentDisplayName: string;
     result: AgentCredentialResult;
   } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createNotice, setCreateNotice] = useState<string | null>(null);
   const [createPending, setCreatePending] = useState(false);
   const [credentialError, setCredentialError] = useState<string | null>(null);
   const [rotatingAgentId, setRotatingAgentId] = useState<string | null>(null);
@@ -284,11 +322,12 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
 
   async function handleCreateAgent() {
     setCreateError(null);
+    setCreateNotice(null);
     setCreatePending(true);
 
     try {
-      const result = await createDeveloperAgent({
-        username: formState.username.trim(),
+      const buildPayload = (username: string): CreateAgentPayload => ({
+        username,
         displayName: formState.displayName.trim(),
         bio: formState.bio.trim(),
         developerName: formState.developerName.trim(),
@@ -304,7 +343,24 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
         isAutonomous: formState.isAutonomous
       });
 
-      const createdCard = buildCardFromDraft(formState, result);
+      const preferredUsername = slugifyUsername(formState.username.trim() || formState.displayName.trim());
+      let finalUsername = preferredUsername;
+      let result: AgentCredentialResult;
+
+      try {
+        result = await createDeveloperAgent(buildPayload(preferredUsername));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to create agent.";
+        if (!message.includes("Username is already taken")) {
+          throw error;
+        }
+
+        finalUsername = withUsernameSuffix(preferredUsername, String(Math.floor(100 + Math.random() * 900)));
+        result = await createDeveloperAgent(buildPayload(finalUsername));
+        setCreateNotice(`Username was already taken, so this agent was created as @${finalUsername}.`);
+      }
+
+      const createdCard = buildCardFromDraft({ ...formState, username: finalUsername }, result);
       const nextAgents = [createdCard, ...agents].sort((left, right) =>
         left.agent.displayName.localeCompare(right.agent.displayName)
       );
@@ -322,6 +378,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
         result
       });
       setFormState(defaultFormState(sessionUser));
+      setIsUsernameCustomized(false);
       setSaveNotice("Agent created. You can configure it and run it in this tab now.");
     } catch (error) {
       setCreateError(error instanceof Error ? error.message : "Failed to create agent.");
@@ -526,19 +583,32 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
             <input
               className="input-field"
               onChange={(event) =>
-                setFormState((current) => ({ ...current, displayName: event.target.value }))
+                setFormState((current) => {
+                  const nextDisplayName = event.target.value;
+                  return {
+                    ...current,
+                    displayName: nextDisplayName,
+                    username: isUsernameCustomized
+                      ? current.username
+                      : slugifyUsername(nextDisplayName)
+                  };
+                })
               }
               placeholder="Agent name"
               value={formState.displayName}
             />
             <input
               className="input-field"
-              onChange={(event) =>
-                setFormState((current) => ({ ...current, username: event.target.value }))
-              }
+              onChange={(event) => {
+                setIsUsernameCustomized(true);
+                setFormState((current) => ({ ...current, username: slugifyUsername(event.target.value) }));
+              }}
               placeholder="agent-username"
               value={formState.username}
             />
+            <p className="text-[11px] text-slate-400">
+              Public handle: @{formState.username || slugifyUsername(formState.displayName || "agent")}
+            </p>
             <textarea
               className="textarea-field h-24"
               onChange={(event) =>
@@ -613,6 +683,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
             </label>
 
             {createError ? <p className="text-sm text-rose-500">{createError}</p> : null}
+            {createNotice ? <p className="text-sm text-emerald-300">{createNotice}</p> : null}
 
             <button
               className="button-primary w-full"
