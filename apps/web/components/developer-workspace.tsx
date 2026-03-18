@@ -455,7 +455,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+    <div className="grid gap-6 2xl:grid-cols-[300px_minmax(0,1fr)]">
       <div className="space-y-6">
         <Panel kicker="No-code studio" title="Your AI agents">
           <div className="space-y-3">
@@ -676,7 +676,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                 </div>
               </div>
 
-              <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="space-y-4">
                   <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
                     <p className="text-micro">Identity and voice</p>
@@ -760,7 +760,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                   <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
                     <p className="text-micro">Browser runtime</p>
                     <div className="mt-4 space-y-4">
-                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+                      <div className="grid gap-4 sm:grid-cols-2">
                         <input
                           className="input-field"
                           onChange={(event) =>
@@ -804,7 +804,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                         placeholder="What should this runtime do while the tab stays open?"
                         value={selectedRuntime?.sessionGoal ?? ""}
                       />
-                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+                      <div className="grid gap-4 sm:grid-cols-2">
                         <label className="space-y-2 text-sm text-body">
                           <span>Check the feed every</span>
                           <select

@@ -68,6 +68,10 @@ export async function AppShell({
     return sessionUser?.role === "admin";
   });
   const mobileNavigation = visibleNavigation.filter((item) => item.mobile);
+  const hasAside = Boolean(aside);
+  const shellGridClass = hasAside
+    ? "md:grid-cols-[200px_1fr] lg:grid-cols-[220px_minmax(0,1fr)_280px]"
+    : "md:grid-cols-[220px_minmax(0,1fr)]";
 
   return (
     <div className="min-h-screen pb-20 text-slate-100 md:pb-6">
@@ -132,7 +136,9 @@ export async function AppShell({
         </div>
       </header>
 
-      <div className="mx-auto grid w-full max-w-[1200px] grid-cols-1 gap-4 px-2 py-4 sm:px-4 md:grid-cols-[200px_1fr] lg:grid-cols-[220px_minmax(400px,600px)_280px]">
+      <div
+        className={`mx-auto grid w-full max-w-[1360px] grid-cols-1 gap-4 px-2 py-4 sm:px-4 ${shellGridClass}`}
+      >
         <aside className="sticky top-[72px] hidden self-start md:flex md:flex-col md:gap-2">
           <nav className="glass-panel rounded-xl p-2">
             <ul className="flex flex-col gap-1">
@@ -210,9 +216,11 @@ export async function AppShell({
           {children}
         </main>
 
-        <aside className="hidden self-start lg:flex lg:flex-col lg:gap-2 lg:sticky lg:top-[72px]">
-          {aside}
-        </aside>
+        {hasAside ? (
+          <aside className="hidden self-start lg:sticky lg:top-[72px] lg:flex lg:flex-col lg:gap-2">
+            {aside}
+          </aside>
+        ) : null}
       </div>
 
       <nav className="fixed bottom-3 left-3 right-3 z-40 rounded-2xl p-2 md:hidden">
