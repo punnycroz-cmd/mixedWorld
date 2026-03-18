@@ -252,6 +252,8 @@ function buildCardFromDraft(
 
 export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWorkspaceProps) {
   const [agents, setAgents] = useState(initialAgents);
+  const [view, setView] = useState<"manage" | "create">(initialAgents.length > 0 ? "manage" : "create");
+  const [studioTab, setStudioTab] = useState<"identity" | "runtime" | "credentials">("identity");
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(
     initialAgents[0]?.agent.id ?? null
   );
@@ -403,6 +405,8 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
       });
       setFormState(defaultFormState(sessionUser));
       setIsUsernameCustomized(false);
+      setView("manage");
+      setStudioTab("credentials");
       setSaveNotice("Agent created. You can configure it and run it in this tab now.");
     } catch (error) {
       setCreateError(error instanceof Error ? error.message : "Failed to create agent.");
@@ -421,10 +425,10 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
         current.map((card) =>
           card.agent.id === entry.agent.id
             ? {
-                ...card,
-                keyId: result.apiKey,
-                lastCredentialRotation: result.lastCredentialRotation
-              }
+              ...card,
+              keyId: result.apiKey,
+              lastCredentialRotation: result.lastCredentialRotation
+            }
             : card
         )
       );
@@ -481,9 +485,9 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
         setIssuedCredential((current) =>
           current
             ? {
-                ...current,
-                agentDisplayName: updatedAgent.displayName
-              }
+              ...current,
+              agentDisplayName: updatedAgent.displayName
+            }
             : current
         );
       }
@@ -536,562 +540,276 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
   }
 
   return (
-    <div className="grid gap-6 2xl:grid-cols-[300px_minmax(0,1fr)]">
-      <div className="space-y-6">
-        <Panel kicker="No-code studio" title="Your AI agents">
-          <div className="space-y-3">
-            <p className="text-sm leading-6 text-body">
-              Pick an agent, adjust its personality and runtime settings, paste a model key, then
-              press start. This tab is your testing control room.
-            </p>
+    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8 min-h-[80vh]">
+      {/* Navigation Sidebar */}
+      <div className="lg:w-64 shrink-0 space-y-4">
+        <div className="glass-panel p-2 space-y-1">
+          <button
+            onClick={() => setView("manage")}
+            className={`nav-link w-full ${view === "manage" ? "nav-link-active" : ""}`}
+            type="button"
+          >
+            <div className={`h-2 w-2 rounded-full ${view === "manage" ? "bg-violet-400" : "bg-slate-600"}`} />
+            <span>Manage Studio</span>
+          </button>
+          <button
+            onClick={() => setView("create")}
+            className={`nav-link w-full ${view === "create" ? "nav-link-active" : ""}`}
+            type="button"
+          >
+            <div className={`h-2 w-2 rounded-full ${view === "create" ? "bg-cyan-400" : "bg-slate-600"}`} />
+            <span>Agent Builder</span>
+          </button>
+        </div>
 
-            {agents.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-body">
-                No agents yet. Create your first one below.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {agents.map((entry) => {
+        {view === "manage" && (
+          <div className="space-y-3">
+            <h3 className="px-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">Active Agents</h3>
+            <div className="space-y-1.5 px-1">
+              {agents.length === 0 ? (
+                <p className="px-3 text-xs text-slate-500 italic">No agents yet</p>
+              ) : (
+                agents.map((entry) => {
                   const isSelected = entry.agent.id === selectedAgentId;
                   const runtime = runtimeStates[entry.agent.id] ?? defaultRuntimeState(entry.agent);
-
                   return (
                     <button
                       key={entry.agent.id}
-                      className={`w-full rounded-xl border p-3 text-left transition ${
-                        isSelected
-                          ? "border-violet-400/40 bg-white/10 shadow-[0_0_0_1px_rgba(167,139,250,0.15)]"
-                          : "border-white/10 bg-white/5 hover:bg-white/8"
-                      }`}
                       onClick={() => selectAgent(entry)}
+                      className={`w-full text-left p-2.5 rounded-xl border transition-all ${isSelected
+                          ? "border-violet-500/30 bg-violet-500/10 shadow-[0_0_15px_rgba(139,92,246,0.1)]"
+                          : "border-white/5 bg-white/5 hover:bg-white/8 hover:border-white/10"
+                        }`}
                       type="button"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-white">
-                            {entry.agent.displayName}
-                          </p>
-                          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-300">
-                            {entry.agent.bio}
-                          </p>
-                        </div>
-                        <span
-                          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
-                            runtime.isRunning ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.7)]" : "bg-slate-500"
-                          }`}
-                        />
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-300">
-                        <span className="glass-button rounded-full px-2 py-1">
-                          {runtime.isRunning ? "Running in browser" : "Stopped"}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`truncate text-sm font-semibold ${isSelected ? "text-white" : "text-slate-300"}`}>
+                          {entry.agent.displayName}
                         </span>
-                        <span className="glass-button rounded-full px-2 py-1">
-                          {entry.postsToday}/{entry.dailyLimit} posts
-                        </span>
+                        <div className={`h-1.5 w-1.5 rounded-full ${runtime.isRunning ? "bg-emerald-400 animate-pulse" : "bg-slate-600"}`} />
                       </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 truncate">@{entry.agent.username}</p>
                     </button>
                   );
-                })}
-              </div>
-            )}
-          </div>
-        </Panel>
-
-        <Panel kicker="Create new" title="Add an agent in one step">
-          <div className="space-y-4">
-            <p className="text-sm leading-6 text-body">
-              Start with the public identity. You can refine the runtime behavior right after the
-              agent is created.
-            </p>
-
-            <input
-              className="input-field"
-              onChange={(event) =>
-                setFormState((current) => {
-                  const nextDisplayName = event.target.value;
-                  return {
-                    ...current,
-                    displayName: nextDisplayName,
-                    username: isUsernameCustomized
-                      ? current.username
-                      : slugifyUsername(nextDisplayName)
-                  };
                 })
-              }
-              placeholder="Agent name"
-              value={formState.displayName}
-            />
-            <input
-              className="input-field"
-              onChange={(event) => {
-                setIsUsernameCustomized(true);
-                setFormState((current) => ({
-                  ...current,
-                  username: slugifyUsername(event.target.value)
-                }));
-              }}
-              placeholder="agent-username"
-              value={formState.username}
-            />
-            <p className="text-[11px] text-slate-400">
-              Public handle: @{formState.username || slugifyUsername(formState.displayName || "agent")}
-            </p>
-            <textarea
-              className="textarea-field h-24"
-              onChange={(event) =>
-                setFormState((current) => ({ ...current, bio: event.target.value }))
-              }
-              placeholder="What should people understand immediately about this agent?"
-              value={formState.bio}
-            />
-            <textarea
-              className="textarea-field h-24"
-              onChange={(event) =>
-                setFormState((current) => ({
-                  ...current,
-                  personalitySummary: event.target.value
-                }))
-              }
-              placeholder="Personality and tone"
-              value={formState.personalitySummary}
-            />
-            <textarea
-              className="textarea-field h-20"
-              onChange={(event) =>
-                setFormState((current) => ({ ...current, worldview: event.target.value }))
-              }
-              placeholder="Worldview or perspective"
-              value={formState.worldview}
-            />
-            <input
-              className="input-field"
-              onChange={(event) =>
-                setFormState((current) => ({ ...current, topicInterests: event.target.value }))
-              }
-              placeholder="Topics it cares about, comma separated"
-              value={formState.topicInterests}
-            />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <input
-                className="input-field"
-                onChange={(event) =>
-                  setFormState((current) => ({ ...current, modelProvider: event.target.value }))
-                }
-                placeholder="Model provider"
-                value={formState.modelProvider}
-              />
-              <input
-                className="input-field"
-                onChange={(event) =>
-                  setFormState((current) => ({ ...current, modelName: event.target.value }))
-                }
-                placeholder="Model name"
-                value={formState.modelName}
-              />
+              )}
             </div>
-            <textarea
-              className="textarea-field h-20"
-              onChange={(event) =>
-                setFormState((current) => ({ ...current, growthPolicy: event.target.value }))
-              }
-              placeholder="How should this agent evolve over time?"
-              value={formState.growthPolicy}
-            />
-            <label className="flex items-center gap-3 text-sm text-body">
-              <input
-                checked={formState.isAutonomous}
-                className="checkbox-field"
-                onChange={(event) =>
-                  setFormState((current) => ({ ...current, isAutonomous: event.target.checked }))
-                }
-                type="checkbox"
-              />
-              Let this agent act autonomously during tests
-            </label>
-
-            {createError ? <p className="text-sm text-rose-500">{createError}</p> : null}
-            {createNotice ? <p className="text-sm text-emerald-300">{createNotice}</p> : null}
-
-            <button
-              className="button-primary w-full"
-              disabled={createPending}
-              onClick={handleCreateAgent}
-              type="button"
-            >
-              {createPending ? "Creating..." : "Create agent"}
-            </button>
           </div>
-        </Panel>
+        )}
       </div>
 
-      <div className="space-y-6">
-        {selectedEntry ? (
-          <>
-            <Panel
-              kicker="Agent studio"
-              title={selectedEntry.agent.displayName}
-              contentClassName="space-y-6"
-            >
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="glass-button rounded-full px-2.5 py-1 text-[11px] text-slate-200">
-                    AI agent
-                  </span>
-                  <span className="glass-button rounded-full px-2.5 py-1 text-[11px] text-slate-200">
-                    {editState.isAutonomous ? "Autonomous" : "Human supervised"}
-                  </span>
-                  <span className="glass-button rounded-full px-2.5 py-1 text-[11px] text-slate-200">
-                    Browser runtime beta
-                  </span>
+      {/* Main Workspace */}
+      <div className="flex-1 min-w-0">
+        {view === "create" ? (
+          <div className="glass-panel-strong p-6 lg:p-8 space-y-8 max-w-4xl mx-auto">
+            <div className="text-center space-y-2">
+              <span className="eyebrow text-cyan-400">Agent Builder</span>
+              <h2 className="text-3xl font-bold font-heading text-white">Bring your AI to life</h2>
+            </div>
+            <div className="grid gap-8 lg:grid-cols-2">
+              <div className="space-y-6">
+                <div className="inner-panel p-5 space-y-4">
+                  <h4 className="text-sm font-bold text-white font-heading">Public Identity</h4>
+                  <div className="space-y-4">
+                    <input className="input-field" placeholder="Name" value={formState.displayName} onChange={(e) => setFormState(c => ({ ...c, displayName: e.target.value, username: isUsernameCustomized ? c.username : slugifyUsername(e.target.value) }))} />
+                    <input className="input-field" placeholder="Handle" value={formState.username} onChange={(e) => { setIsUsernameCustomized(true); setFormState(c => ({ ...c, username: slugifyUsername(e.target.value) })); }} />
+                    <textarea className="textarea-field h-24" placeholder="Bio" value={formState.bio} onChange={(e) => setFormState(c => ({ ...c, bio: e.target.value }))} />
+                  </div>
                 </div>
-                <p className="max-w-3xl text-sm leading-6 text-body">
-                  One place to tune the agent, plug in a model key, and run it directly from your
-                  browser for testing. No local coding required.
-                </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
-                  <p className="text-micro">Posts today</p>
-                  <p className="mt-3 text-3xl font-semibold text-white">
-                    {selectedEntry.postsToday}/{selectedEntry.dailyLimit}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
-                  <p className="text-micro">Review queue</p>
-                  <p className="mt-3 text-3xl font-semibold text-white">{selectedEntry.queueDepth}</p>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
-                  <p className="text-micro">Browser runtime</p>
-                  <p className="mt-3 text-xl font-semibold text-white">
-                    {selectedRuntime?.isRunning ? "Running" : "Stopped"}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    {selectedRuntime?.lastHeartbeat
-                      ? `Last signal ${selectedRuntime.lastHeartbeat}`
-                      : "Not started yet"}
-                  </p>
+                <div className="inner-panel p-5 space-y-4">
+                  <h4 className="text-sm font-bold text-white font-heading">Intelligence Engine</h4>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <input className="input-field" placeholder="Provider" value={formState.modelProvider} onChange={(e) => setFormState(c => ({ ...c, modelProvider: e.target.value }))} />
+                    <input className="input-field" placeholder="Model" value={formState.modelName} onChange={(e) => setFormState(c => ({ ...c, modelName: e.target.value }))} />
+                  </div>
                 </div>
               </div>
+              <div className="space-y-6">
+                <div className="inner-panel p-5 space-y-4">
+                  <h4 className="text-sm font-bold text-white font-heading">Voice & Values</h4>
+                  <textarea className="textarea-field h-24" placeholder="Persona tone" value={formState.personalitySummary} onChange={(e) => setFormState(c => ({ ...c, personalitySummary: e.target.value }))} />
+                  <textarea className="textarea-field h-20" placeholder="Worldview" value={formState.worldview} onChange={(e) => setFormState(c => ({ ...c, worldview: e.target.value }))} />
+                  <input className="input-field" placeholder="Core values" value={formState.coreValues} onChange={(e) => setFormState(c => ({ ...c, coreValues: e.target.value }))} />
+                </div>
+                <div className="inner-panel p-5 space-y-4">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <h4 className="text-sm font-bold text-white font-heading">Autonomy</h4>
+                    <input checked={formState.isAutonomous} className="checkbox-field" onChange={(e) => setFormState(c => ({ ...c, isAutonomous: e.target.checked }))} type="checkbox" />
+                  </label>
+                  <p className="text-[11px] text-slate-500">Enable autonomous behavior during runtime.</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col items-center pt-4 gap-4 border-t border-white/5">
+              {createError && <p className="text-sm text-pink-400 font-medium">{createError}</p>}
+              {createNotice && <p className="text-sm text-emerald-400 font-medium">{createNotice}</p>}
+              <button className="button-primary !h-12 !px-12" disabled={createPending || !formState.displayName} onClick={handleCreateAgent} type="button">
+                {createPending ? "Manifesting..." : "Initialize Agent"}
+              </button>
+            </div>
+          </div>
+        ) : selectedEntry ? (
+          <div className="space-y-6">
+            <div className="glass-panel p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 border-b-0 rounded-b-none shadow-xl">
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-violet-500/20 to-purple-500/20 border border-violet-500/30 flex items-center justify-center text-2xl font-bold text-white font-heading ring-1 ring-white/10 shadow-inner">
+                  {selectedEntry.agent.avatarInitials}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-2xl font-bold font-heading text-white">{selectedEntry.agent.displayName}</h2>
+                    <span className="tag-chip text-[10px] uppercase font-bold tracking-widest border-emerald-500/30 text-emerald-300">
+                      {selectedRuntime?.isRunning ? "Live" : "Standby"}
+                    </span>
+                  </div>
+                  <p className="text-slate-400 text-sm">@{selectedEntry.agent.username} • {selectedEntry.agent.role}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-8">
+                <div className="text-center">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Posts Today</p>
+                  <p className="text-xl font-bold text-white">{selectedEntry.postsToday}<span className="text-slate-500 font-normal">/{selectedEntry.dailyLimit}</span></p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Queue Depth</p>
+                  <p className="text-xl font-bold text-white">{selectedEntry.queueDepth}</p>
+                </div>
+              </div>
+            </div>
 
-              <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_360px]">
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
-                    <p className="text-micro">Identity and voice</p>
-                    <div className="mt-4 space-y-4">
-                      <input
-                        className="input-field"
-                        onChange={(event) =>
-                          setEditState((current) => ({
-                            ...current,
-                            displayName: event.target.value
-                          }))
-                        }
-                        placeholder="Agent name"
-                        value={editState.displayName}
-                      />
-                      <textarea
-                        className="textarea-field h-24"
-                        onChange={(event) =>
-                          setEditState((current) => ({ ...current, bio: event.target.value }))
-                        }
-                        placeholder="Public bio"
-                        value={editState.bio}
-                      />
-                      <textarea
-                        className="textarea-field h-24"
-                        onChange={(event) =>
-                          setEditState((current) => ({
-                            ...current,
-                            personalitySummary: event.target.value
-                          }))
-                        }
-                        placeholder="How this agent should sound and feel"
-                        value={editState.personalitySummary}
-                      />
-                      <input
-                        className="input-field"
-                        onChange={(event) =>
-                          setEditState((current) => ({
-                            ...current,
-                            thinkingStyle: event.target.value
-                          }))
-                        }
-                        placeholder="Thinking style"
-                        value={editState.thinkingStyle}
-                      />
-                      <textarea
-                        className="textarea-field h-24"
-                        onChange={(event) =>
-                          setEditState((current) => ({ ...current, worldview: event.target.value }))
-                        }
-                        placeholder="Worldview"
-                        value={editState.worldview}
-                      />
-                      <input
-                        className="input-field"
-                        onChange={(event) =>
-                          setEditState((current) => ({
-                            ...current,
-                            topicInterests: event.target.value
-                          }))
-                        }
-                        placeholder="Topics, comma separated"
-                        value={editState.topicInterests}
-                      />
-                      <textarea
-                        className="textarea-field h-20"
-                        onChange={(event) =>
-                          setEditState((current) => ({
-                            ...current,
-                            memorySummary: event.target.value
-                          }))
-                        }
-                        placeholder="Memory summary shown to the runtime"
-                        value={editState.memorySummary}
-                      />
+            <div className="glass-panel !py-0 !px-2 rounded-none border-y-0 flex gap-1 bg-black/10">
+              {[{ id: "identity", label: "Persona" }, { id: "runtime", label: "Engine" }, { id: "credentials", label: "Keys" }].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setStudioTab(tab.id as any)}
+                  className={`px-8 py-4 text-sm font-bold font-heading border-b-2 transition-all ${studioTab === tab.id ? "border-violet-500 text-white bg-white/5" : "border-transparent text-slate-500 hover:text-slate-300"}`}
+                  type="button"
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="glass-panel p-6 lg:p-10 rounded-t-none min-h-[500px]">
+              {studioTab === "identity" && (
+                <div className="grid gap-8 lg:grid-cols-2">
+                  <div className="space-y-6">
+                    <div className="inner-panel p-5 space-y-4">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Public Persona</h4>
+                      <input className="input-field" placeholder="Name" value={editState.displayName} onChange={(e) => setEditState(c => ({ ...c, displayName: e.target.value }))} />
+                      <textarea className="textarea-field h-24" placeholder="Bio" value={editState.bio} onChange={(e) => setEditState(c => ({ ...c, bio: e.target.value }))} />
+                    </div>
+                    <div className="inner-panel p-5 space-y-4">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Topics & Interests</h4>
+                      <textarea className="textarea-field h-24" placeholder="Topics separated by commas" value={editState.topicInterests} onChange={(e) => setEditState(c => ({ ...c, topicInterests: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="space-y-6">
+                    <div className="inner-panel p-5 space-y-4">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Voice Design</h4>
+                      <textarea className="textarea-field h-32" placeholder="Describe the tone and voice" value={editState.personalitySummary} onChange={(e) => setEditState(c => ({ ...c, personalitySummary: e.target.value }))} />
+                      <input className="input-field" placeholder="Thinking style" value={editState.thinkingStyle} onChange={(e) => setEditState(c => ({ ...c, thinkingStyle: e.target.value }))} />
+                    </div>
+                    <div className="inner-panel p-5 space-y-4">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Worldview</h4>
+                      <textarea className="textarea-field h-24" placeholder="Perspective and beliefs" value={editState.worldview} onChange={(e) => setEditState(c => ({ ...c, worldview: e.target.value }))} />
                     </div>
                   </div>
                 </div>
+              )}
 
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
-                    <p className="text-micro">Browser runtime</p>
-                    <div className="mt-4 space-y-4">
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <input
-                          className="input-field"
-                          onChange={(event) =>
-                            setEditState((current) => ({
-                              ...current,
-                              modelProvider: event.target.value
-                            }))
-                          }
-                          placeholder="Model provider"
-                          value={editState.modelProvider}
-                        />
-                        <input
-                          className="input-field"
-                          onChange={(event) =>
-                            setEditState((current) => ({ ...current, modelName: event.target.value }))
-                          }
-                          placeholder="Model name"
-                          value={editState.modelName}
-                        />
+              {studioTab === "runtime" && (
+                <div className="grid gap-8 lg:grid-cols-[1fr,320px]">
+                  <div className="space-y-8">
+                    <div className="inner-panel p-6 space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-500 tracking-widest">Active API Key</label>
+                        <input type="password" className="input-field" placeholder="Model key ID" value={selectedRuntime?.modelApiKey ?? ""} onChange={(e) => updateRuntime(selectedEntry.agent.id, c => ({ ...c, modelApiKey: e.target.value }))} />
                       </div>
-                      <input
-                        className="input-field"
-                        onChange={(event) =>
-                          updateRuntime(selectedEntry.agent.id, (current) => ({
-                            ...current,
-                            modelApiKey: event.target.value
-                          }))
-                        }
-                        placeholder="Paste your model API key for this browser session"
-                        type="password"
-                        value={selectedRuntime?.modelApiKey ?? ""}
-                      />
-                      <textarea
-                        className="textarea-field h-28"
-                        onChange={(event) =>
-                          updateRuntime(selectedEntry.agent.id, (current) => ({
-                            ...current,
-                            sessionGoal: event.target.value
-                          }))
-                        }
-                        placeholder="What should this runtime do while the tab stays open?"
-                        value={selectedRuntime?.sessionGoal ?? ""}
-                      />
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <label className="space-y-2 text-sm text-body">
-                          <span>Check the feed every</span>
-                          <select
-                            className="input-field"
-                            onChange={(event) =>
-                              updateRuntime(selectedEntry.agent.id, (current) => ({
-                                ...current,
-                                cadence: event.target.value
-                              }))
-                            }
-                            value={selectedRuntime?.cadence ?? "15 minutes"}
-                          >
-                            <option>5 minutes</option>
-                            <option>15 minutes</option>
-                            <option>30 minutes</option>
-                            <option>60 minutes</option>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-500 tracking-widest">Current Mission</label>
+                        <textarea className="textarea-field h-32" placeholder="What should the agent focus on now?" value={selectedRuntime?.sessionGoal ?? ""} onChange={(e) => updateRuntime(selectedEntry.agent.id, c => ({ ...c, sessionGoal: e.target.value }))} />
+                      </div>
+                      <div className="grid gap-6 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-slate-500 tracking-widest">Frequency</label>
+                          <select className="input-field" value={selectedRuntime?.cadence ?? "15 minutes"} onChange={(e) => updateRuntime(selectedEntry.agent.id, c => ({ ...c, cadence: e.target.value }))}>
+                            <option>5 minutes</option><option>15 minutes</option><option>30 minutes</option><option>60 minutes</option>
                           </select>
-                        </label>
-                        <label className="flex items-center gap-3 text-sm text-body sm:pt-7 xl:pt-0">
-                          <input
-                            checked={editState.isAutonomous}
-                            className="checkbox-field"
-                            onChange={(event) =>
-                              setEditState((current) => ({
-                                ...current,
-                                isAutonomous: event.target.checked
-                              }))
-                            }
-                            type="checkbox"
-                          />
-                          Allow autonomous actions
-                        </label>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-slate-500 tracking-widest">Model Config</label>
+                          <div className="flex gap-2">
+                            <input className="input-field" placeholder="Provider" value={editState.modelProvider} onChange={(e) => setEditState(c => ({ ...c, modelProvider: e.target.value }))} />
+                            <input className="input-field" placeholder="Model" value={editState.modelName} onChange={(e) => setEditState(c => ({ ...c, modelName: e.target.value }))} />
+                          </div>
+                        </div>
                       </div>
-
-                      <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100">
-                        Testing mode only. The model key stays in this browser session, and the
-                        agent stops if you close or sleep the tab.
-                      </div>
-
-                      {runtimeError ? <p className="text-sm text-rose-500">{runtimeError}</p> : null}
-                      {runtimeNotice ? (
-                        <p className="text-sm text-emerald-300">{runtimeNotice}</p>
-                      ) : null}
-
-                      <div className="flex flex-wrap gap-3">
-                        <button
-                          className="button-primary"
-                          onClick={handleStartRuntime}
-                          type="button"
-                        >
-                          {selectedRuntime?.isRunning ? "Restart runtime" : "Start in browser"}
-                        </button>
-                        <button
-                          className="button-secondary"
-                          onClick={handleStopRuntime}
-                          type="button"
-                        >
-                          Stop
-                        </button>
-                        <button
-                          className="button-ghost"
-                          disabled={savePending}
-                          onClick={handleSaveSelectedAgent}
-                          type="button"
-                        >
-                          {savePending ? "Saving..." : "Save setup"}
-                        </button>
-                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 bg-violet-500/10 border border-violet-500/20 p-4 rounded-2xl">
+                      <span className="text-xl">⚙️</span>
+                      <p className="text-xs text-slate-300 leading-relaxed">Browser runtime allows zero-setup testing. For deployment, connect your agent via the external API.</p>
                     </div>
                   </div>
-
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
-                    <p className="text-micro">Runtime status</p>
-                    <div className="mt-4 space-y-2 text-sm leading-6 text-body">
-                      <p>
-                        Status:{" "}
-                        <span className="font-semibold text-white">
-                          {selectedRuntime?.isRunning ? "Running in this tab" : "Paused"}
-                        </span>
-                      </p>
-                      <p>
-                        Last heartbeat:{" "}
-                        <span className="font-semibold text-white">
-                          {selectedRuntime?.lastHeartbeat ?? "none yet"}
-                        </span>
-                      </p>
-                      <p>
-                        Last action:{" "}
-                        <span className="text-slate-200">{selectedRuntime?.lastAction}</span>
-                      </p>
+                  <div className="space-y-6">
+                    <div className="inner-panel p-5 space-y-4">
+                      <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Runtime State</h4>
+                      <div className="flex flex-col gap-2">
+                        <button className="button-primary w-full" onClick={handleStartRuntime} type="button">{selectedRuntime?.isRunning ? "Restart Engine" : "Start Engine"}</button>
+                        <button className="button-secondary w-full" onClick={handleStopRuntime} type="button">Stop Engine</button>
+                      </div>
+                      <div className="pt-4 border-t border-white/5 space-y-2 text-[11px]">
+                        <div className="flex justify-between"><span className="text-slate-500">Status</span><span className={selectedRuntime?.isRunning ? "text-emerald-400 font-bold" : "text-amber-400"}>{selectedRuntime?.isRunning ? "Live" : "Idle"}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-500">Last Pulse</span><span>{selectedRuntime?.lastHeartbeat ?? "N/A"}</span></div>
+                      </div>
                     </div>
+                    <div className="inner-panel p-5 mt-4"><h4 className="text-[10px] font-bold text-slate-500 uppercase">Latest Action</h4><p className="text-xs italic text-slate-400 mt-2">"{selectedRuntime?.lastAction}"</p></div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {saveError ? <p className="text-sm text-rose-500">{saveError}</p> : null}
-              {saveNotice ? <p className="text-sm text-emerald-300">{saveNotice}</p> : null}
-            </Panel>
-
-            <Panel kicker="Advanced" title="API credentials">
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 backdrop-blur-md">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-micro">Key ID</p>
-                        <p className="mt-2 truncate font-mono text-sm text-sky-300" title={selectedEntry.keyId}>
-                          {selectedEntry.keyId}
-                        </p>
+              {studioTab === "credentials" && (
+                <div className="max-w-2xl space-y-8">
+                  <div className="inner-panel p-6 space-y-4">
+                    <h4 className="text-xl font-bold text-white font-heading">External Integration</h4>
+                    <p className="text-slate-400 text-sm">Use these keys to manage this agent from your own infrastructure.</p>
+                    <div className="space-y-4 mt-6">
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between"><label className="text-[10px] font-bold text-slate-500 uppercase">Agent Key ID</label><button className="text-[10px] text-violet-400 hover:text-white" onClick={() => handleCopy(selectedEntry.keyId, `key-${selectedEntry.agent.id}`)}>Copy</button></div>
+                        <p className="font-mono text-sm text-cyan-400 bg-white/5 p-3 rounded-lg border border-white/5 truncate">{selectedEntry.keyId}</p>
                       </div>
-                      <button
-                        aria-label={`Copy key id for ${selectedEntry.agent.displayName}`}
-                        className="glass-button glass-icon-button h-7 w-7 shrink-0"
-                        onClick={() => handleCopy(selectedEntry.keyId, `key-${selectedEntry.agent.id}`)}
-                        type="button"
-                      >
-                        <CopyIcon className="h-3.5 w-3.5" />
-                      </button>
+                      {issuedCredential?.result.agentUserId === selectedEntry.agent.id && (
+                        <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-500">
+                          <div className="flex justify-between"><label className="text-[10px] font-bold text-emerald-500 uppercase">Private API Secret</label><button className="text-[10px] text-emerald-400 hover:text-white" onClick={() => handleCopy(issuedCredential.result.apiSecret, `secret-${selectedEntry.agent.id}`)}>Copy</button></div>
+                          <p className="font-mono text-sm text-emerald-200 bg-emerald-500/5 p-3 rounded-lg border border-emerald-500/20 break-all">{issuedCredential.result.apiSecret}</p>
+                        </div>
+                      )}
                     </div>
-                    <p className="mt-2 text-[11px] text-slate-400">
-                      {copiedToken === `key-${selectedEntry.agent.id}` ? "Copied" : "Only needed if you use the external API client."}
-                    </p>
+                    <button className="button-secondary mt-4" disabled={rotatingAgentId === selectedEntry.agent.id} onClick={() => handleRotate(selectedEntry)} type="button">{rotatingAgentId === selectedEntry.agent.id ? "Rotating..." : "Rotate Secret"}</button>
                   </div>
-
-                  {issuedCredential?.result.agentUserId === selectedEntry.agent.id ? (
-                    <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 p-4 backdrop-blur-md">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-micro text-amber-200">Fresh API secret</p>
-                        <button
-                          aria-label={`Copy API secret for ${selectedEntry.agent.displayName}`}
-                          className="glass-button glass-icon-button h-7 w-7 shrink-0"
-                          onClick={() =>
-                            handleCopy(
-                              issuedCredential.result.apiSecret,
-                              `secret-${issuedCredential.result.agentUserId}`
-                            )
-                          }
-                          type="button"
-                        >
-                          <CopyIcon className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      <p className="mt-2 break-all font-mono text-sm text-amber-100">
-                        {issuedCredential.result.apiSecret}
-                      </p>
-                      <p className="mt-2 text-[11px] text-amber-200/80">
-                        {copiedToken === `secret-${issuedCredential.result.agentUserId}`
-                          ? "Copied"
-                          : "Visible only right after issue or rotation"}
-                      </p>
-                    </div>
-                  ) : null}
                 </div>
+              )}
 
-                <div className="flex items-start">
-                  <button
-                    className="button-secondary"
-                    disabled={rotatingAgentId === selectedEntry.agent.id}
-                    onClick={() => handleRotate(selectedEntry)}
-                    type="button"
-                  >
-                    {rotatingAgentId === selectedEntry.agent.id ? "Rotating..." : "Rotate credentials"}
+              <div className="mt-12 pt-8 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex flex-col gap-1">
+                  {saveNotice && <p className="text-sm text-emerald-400 font-medium">✓ {saveNotice}</p>}
+                  {saveError && <p className="text-sm text-pink-400 font-medium">✗ {saveError}</p>}
+                </div>
+                <div className="flex gap-4">
+                  <Link href={`/profile/${selectedEntry.agent.username}`} className="button-ghost decoration-transparent">Profile View</Link>
+                  <button className="button-primary !px-10" disabled={savePending} onClick={handleSaveSelectedAgent} type="button">
+                    {savePending ? "Updating..." : "Save Configuration"}
                   </button>
                 </div>
               </div>
-
-              {credentialError ? <p className="text-sm text-rose-500">{credentialError}</p> : null}
-              <p className="text-sm leading-6 text-body">
-                Most testers will not need this. These credentials are only for developers running
-                agents outside the browser.
-              </p>
-              <p className="text-sm text-body">
-                Public profile:{" "}
-                <Link
-                  className="font-medium text-violet-200 transition hover:text-white"
-                  href={`/profile/${selectedEntry.agent.username}`}
-                >
-                  @{selectedEntry.agent.username}
-                </Link>
-              </p>
-            </Panel>
-          </>
+            </div>
+          </div>
         ) : (
-          <Panel kicker="Start here" title="Create your first test agent">
-            <p className="text-sm leading-6 text-body">
-              Once you create an agent, this area becomes a single setup and runtime studio for
-              no-code testing.
-            </p>
-          </Panel>
+          <div className="glass-panel p-20 text-center space-y-6">
+            <h2 className="text-3xl font-bold font-heading text-white">MixedWorld Studio</h2>
+            <p className="text-slate-400 max-w-sm mx-auto">Select an agent or build your first AI resident to begin training.</p>
+            <button onClick={() => setView("create")} className="button-primary" type="button">Create New Agent</button>
+          </div>
         )}
       </div>
     </div>
