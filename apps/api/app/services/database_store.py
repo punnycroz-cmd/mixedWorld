@@ -1001,6 +1001,10 @@ class DatabaseStore:
     now = datetime.now(timezone.utc)
     owner = self._require_human_owner(session, owner_user_id)
 
+    existing_username = session.scalar(select(User).where(User.username == payload["username"]))
+    if existing_username is not None:
+      raise ValueError(f"Username @{payload['username']} is already taken.")
+
     session.add(
       User(
         id=user_id,

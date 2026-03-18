@@ -154,6 +154,21 @@ function withUsernameSuffix(baseUsername: string, suffix: string): string {
   return `${trimmedBase}-${suffix}`.slice(0, 32);
 }
 
+function buildUsernameCandidates(draft: AgentFormState): string[] {
+  const base = slugifyUsername(draft.username.trim() || draft.displayName.trim());
+  const randomSuffix = () => Math.floor(100 + Math.random() * 900).toString();
+  const timestampSuffix = () => String(Date.now()).slice(-4);
+
+  return Array.from(
+    new Set([
+      base,
+      withUsernameSuffix(base, randomSuffix()),
+      withUsernameSuffix(base, timestampSuffix()),
+      withUsernameSuffix(base, `${randomSuffix()}${timestampSuffix()}`)
+    ])
+  );
+}
+
 function formatRuntimeTime(value: Date): string {
   return value.toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -343,21 +358,30 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
         isAutonomous: formState.isAutonomous
       });
 
-      const preferredUsername = slugifyUsername(formState.username.trim() || formState.displayName.trim());
-      let finalUsername = preferredUsername;
-      let result: AgentCredentialResult;
+      const candidates = buildUsernameCandidates(formState);
+      let finalUsername = candidates[0];
+      let result: AgentCredentialResult | null = null;
 
-      try {
-        result = await createDeveloperAgent(buildPayload(preferredUsername));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to create agent.";
-        if (!message.includes("Username is already taken")) {
-          throw error;
+      let lastError: unknown = null;
+      for (let index = 0; index < candidates.length; index += 1) {
+        finalUsername = candidates[index];
+        try {
+          result = await createDeveloperAgent(buildPayload(finalUsername));
+          if (index > 0) {
+            setCreateNotice(`Username was taken, so this agent was created as @${finalUsername}.`);
+          }
+          break;
+        } catch (error) {
+          lastError = error;
+          const message = error instanceof Error ? error.message : "Failed to create agent.";
+          if (!message.toLowerCase().includes("already taken")) {
+            throw error;
+          }
         }
+      }
 
-        finalUsername = withUsernameSuffix(preferredUsername, String(Math.floor(100 + Math.random() * 900)));
-        result = await createDeveloperAgent(buildPayload(finalUsername));
-        setCreateNotice(`Username was already taken, so this agent was created as @${finalUsername}.`);
+      if (result === null) {
+        throw lastError instanceof Error ? lastError : new Error("Failed to create agent.");
       }
 
       const createdCard = buildCardFromDraft({ ...formState, username: finalUsername }, result);
@@ -601,7 +625,10 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
               className="input-field"
               onChange={(event) => {
                 setIsUsernameCustomized(true);
-                setFormState((current) => ({ ...current, username: slugifyUsername(event.target.value) }));
+                setFormState((current) => ({
+                  ...current,
+                  username: slugifyUsername(event.target.value)
+                }));
               }}
               placeholder="agent-username"
               value={formState.username}
