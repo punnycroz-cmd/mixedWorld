@@ -74,34 +74,34 @@ export async function AppShell({
     : "md:grid-cols-[220px_minmax(0,1fr)]";
 
   return (
-    <div className="min-h-screen pb-20 text-slate-100 md:pb-6">
-      <header className="glass-panel sticky top-0 z-40 rounded-none border-x-0 border-b border-t-0 border-white/10">
-        <div className="mx-auto flex h-12 w-full max-w-[1200px] items-center justify-between px-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <Link href="/" className="flex shrink-0 items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600 font-bold text-white shadow-lg shadow-purple-950/40 ring-1 ring-white/20">
+    <div className="min-h-screen pb-20 text-slate-100 md:pb-6 relative z-0">
+      <header className="glass-panel sticky top-0 z-40 rounded-none border-x-0 border-b border-t-0 !bg-black/20 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center justify-between px-4">
+          <div className="flex min-w-0 items-center gap-4">
+            <Link href="/" className="group flex shrink-0 items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 via-purple-500 to-cyan-500 font-bold text-white shadow-[0_0_20px_rgba(139,92,246,0.5)] ring-1 ring-white/30 transition-all group-hover:scale-105 group-hover:shadow-[0_0_25px_rgba(34,211,238,0.6)]">
                 M
               </div>
-              <span className="hidden text-base font-semibold tracking-tight text-white drop-shadow-md sm:block">
+              <span className="hidden text-lg font-bold tracking-tight text-white drop-shadow-md sm:block font-heading">
                 MixedWorld
               </span>
             </Link>
 
-            <label className="relative hidden max-w-md flex-1 md:block">
+            <label className="relative hidden max-w-md flex-1 md:block ml-4">
               <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 aria-label="Search humans and agents"
-                className="input-field !h-8 !min-h-0 rounded-full border-white/10 bg-black/25 pl-9 text-xs text-slate-100 placeholder:text-slate-500"
+                className="input-field !h-9 !min-h-0 !rounded-full !border-white/10 !bg-white/5 pl-9 text-xs text-slate-100 placeholder:text-slate-500 focus:!bg-white/10"
                 placeholder="Search humans and agents..."
                 type="text"
               />
             </label>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-3">
             <Link
               aria-label="Open notifications"
-              className="glass-panel flex h-8 w-8 items-center justify-center rounded-full text-slate-300 transition hover:bg-white/10 hover:text-white"
+              className="glass-icon-button"
               href="/notifications"
             >
               <BellIcon className="h-4 w-4" />
@@ -110,7 +110,7 @@ export async function AppShell({
             {sessionUser ? (
               <Link
                 href={`/profile/${sessionUser.username}`}
-                className="glass-panel hidden h-8 items-center gap-2 rounded-full px-2 py-1 sm:flex"
+                className="glass-panel-interactive flex h-9 items-center gap-2 rounded-full px-2 py-1 sm:flex"
               >
                 <SocialAvatar
                   initials={initialsFromDisplayName(sessionUser.displayName)}
@@ -118,19 +118,19 @@ export async function AppShell({
                   presence={resolvePresenceState(sessionUser.accountType)}
                   size="sm"
                 />
-                <span className="max-w-[132px] truncate text-sm font-medium text-slate-100">
+                <span className="hidden sm:block max-w-[132px] truncate text-sm font-medium text-slate-100 pr-2">
                   {sessionUser.displayName}
                 </span>
               </Link>
             ) : (
-              <>
+              <div className="flex gap-2">
                 <Link href="/auth/sign-in" className="button-ghost hidden sm:inline-flex">
                   Sign in
                 </Link>
                 <Link href="/auth/sign-up" className="button-primary">
                   Create account
                 </Link>
-              </>
+              </div>
             )}
           </div>
         </div>
@@ -233,9 +233,8 @@ export async function AppShell({
               <Link
                 key={item.key}
                 aria-label={item.label}
-                className={`flex min-w-[56px] flex-col items-center gap-1 rounded-xl px-2 py-1 text-[10px] font-medium transition ${
-                  isActive ? "bg-white/12 text-white" : "text-slate-400 hover:text-white"
-                }`}
+                className={`flex min-w-[56px] flex-col items-center gap-1 rounded-xl px-2 py-1 text-[10px] font-medium transition ${isActive ? "bg-white/12 text-white" : "text-slate-400 hover:text-white"
+                  }`}
                 href={item.href}
               >
                 <Icon className="h-4 w-4" />

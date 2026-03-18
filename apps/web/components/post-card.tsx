@@ -16,8 +16,11 @@ export function PostCard({ post }: PostCardProps) {
       : post.author.location;
 
   return (
-    <article className="glass-panel glass-panel-interactive rounded-xl px-3 py-3 sm:px-4">
-      <div className="flex gap-3">
+    <article className="glass-panel glass-panel-interactive rounded-2xl p-4 sm:p-5 relative overflow-hidden group">
+      {/* Subtle top highlight */}
+      <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-purple-500/20 to-transparent" />
+
+      <div className="flex gap-4">
         <SocialAvatar
           accountType={post.author.accountType}
           initials={post.author.avatarInitials}
@@ -28,59 +31,59 @@ export function PostCard({ post }: PostCardProps) {
         />
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5 leading-none">
+          <div className="flex flex-wrap items-center gap-2 leading-none mb-2">
             <Link
               href={`/profile/${post.author.username}`}
-              className="truncate text-[14px] font-bold text-white drop-shadow-sm transition hover:text-violet-200"
+              className="truncate text-[15px] font-bold text-white drop-shadow-sm transition hover:text-cyan-400 font-heading"
             >
               {post.author.displayName}
             </Link>
             <AccountBadge user={post.author} />
-            <span className="text-[12px] text-slate-400">
+            <span className="text-[13px] text-slate-400">
               @{post.author.username} · {post.createdAt}
             </span>
           </div>
 
-          <p className="mt-1.5 text-[14px] leading-snug text-slate-200">{post.content}</p>
+          <p className="mt-1 text-[15px] leading-relaxed text-slate-200">{post.content}</p>
 
-          {post.tags.length > 0 || contextLabel ? (
-            <div className="mt-2 flex flex-wrap gap-1.5">
+          {(post.tags.length > 0 || contextLabel) && (
+            <div className="mt-3 flex flex-wrap gap-2">
               {post.tags.map((tag) => (
-                <span key={tag} className="tag-chip text-[11px]">
-                  {tag}
+                <span key={tag} className="tag-chip">
+                  #{tag}
                 </span>
               ))}
-              {contextLabel ? (
-                <span className="tag-chip bg-white/10 text-[11px] text-slate-300">
+              {contextLabel && (
+                <span className="filter-chip text-[11px] py-[2px]">
                   {contextLabel}
                 </span>
-              ) : null}
+              )}
             </div>
-          ) : null}
+          )}
 
-          <div className="mt-2 flex items-center justify-between text-slate-400">
-            <div className="flex items-center gap-5">
-              <span className="inline-flex items-center gap-1.5 text-xs">
-                <MessageIcon className="h-3.5 w-3.5" />
+          <div className="mt-4 flex items-center justify-between inner-panel px-3 py-2">
+            <div className="flex items-center gap-6">
+              <button className="inline-flex items-center gap-2 text-xs font-medium text-slate-400 hover:text-cyan-400 transition-colors">
+                <MessageIcon className="h-4 w-4" />
                 {post.commentCount}
-              </span>
-              <span className="inline-flex items-center gap-1.5 text-xs">
-                <HeartIcon className="h-3.5 w-3.5" />
+              </button>
+              <button className="inline-flex items-center gap-2 text-xs font-medium text-slate-400 hover:text-pink-400 transition-colors">
+                <HeartIcon className="h-4 w-4" />
                 {post.likeCount}
-              </span>
-              {post.status !== "public" ? (
-                <span className="tag-chip border-slate-500/20 bg-slate-500/10 text-[11px] text-slate-300">
+              </button>
+              {post.status !== "public" && (
+                <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 border border-slate-700/50 rounded-md px-1.5 py-0.5">
                   {post.status}
                 </span>
-              ) : null}
+              )}
             </div>
 
             <Link
               href={`/post/${post.id}`}
-              className="glass-button inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-1 text-xs font-medium text-slate-200 transition hover:text-white"
+              className="button-secondary !h-7 !text-xs !px-3"
             >
               Open thread
-              <ChevronRightIcon className="h-3 w-3" />
+              <ChevronRightIcon className="h-3 w-3 opacity-70" />
             </Link>
           </div>
         </div>
