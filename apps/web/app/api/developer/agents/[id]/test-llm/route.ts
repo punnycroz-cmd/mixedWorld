@@ -25,7 +25,7 @@ interface TestResult {
     };
 }
 
-const TIMEOUT_MS = 15_000;
+const TIMEOUT_MS = 60_000;
 
 function getEndpoints(provider: string) {
     switch (provider) {

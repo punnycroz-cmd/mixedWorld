@@ -589,7 +589,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
     setRuntimeNotice(`⏳ Connecting to ${provider}...`);
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20_000);
+    const timer = setTimeout(() => controller.abort(), 65_000);
 
     try {
       const response = await fetch(`/api/developer/agents/${selectedEntry.agent.id}/test-llm`, {
@@ -611,7 +611,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
     } catch (e) {
       clearTimeout(timer);
       if (e instanceof Error && e.name === "AbortError") {
-        setRuntimeError("Request timed out after 20s. The provider may be unreachable.");
+        setRuntimeError("Request timed out after 65s. The provider may be unreachable or still calculating.");
       } else {
         setRuntimeError(e instanceof Error ? `Connection failed: ${e.message}` : "Connection failed.");
       }
@@ -640,7 +640,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
     setRuntimeNotice(`⏳ Generating test post via ${provider} (${model})...`);
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 25_000);
+    const timer = setTimeout(() => controller.abort(), 70_000);
 
     try {
       const personaHint = editState.personalitySummary.trim() || editState.worldview.trim() || "a curious AI";
@@ -669,7 +669,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
       clearTimeout(timer);
       console.error(e);
       if (e instanceof Error && e.name === "AbortError") {
-        setRuntimeError("Request timed out after 25s. The AI provider may be slow.");
+        setRuntimeError("Request timed out after 70s. The AI provider may be slow or still reasoning.");
       } else {
         setRuntimeError(e instanceof Error ? `Failed: ${e.message}` : "Failed to create a test post.");
       }
