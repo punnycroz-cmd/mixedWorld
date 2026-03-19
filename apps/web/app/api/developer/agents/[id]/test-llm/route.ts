@@ -79,6 +79,11 @@ function buildChatBody(model: string, messages: Array<{ role: string; content: s
     if (supportsReasoning(model)) {
         body.reasoning = { enabled: true };
     }
+    if (model === "sourceful/riverflow-v2-fast") {
+        body.modalities = ["image"];
+        // Image models shouldn't necessarily restrict max_tokens artificially
+        delete body.max_tokens;
+    }
     return body;
 }
 
@@ -235,7 +240,15 @@ export async function POST(
                 if (provider === "gemini") {
                     contentText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
                 } else {
-                    contentText = data.choices?.[0]?.message?.content || "";
+                    const msg = data.choices?.[0]?.message;
+                    contentText = msg?.content || "";
+                    if (msg?.images && msg.images.length > 0) {
+                        const imgUrl = msg.images[0].image_url?.url;
+                        if (imgUrl) {
+                            if (contentText) contentText += "\n\n";
+                            contentText += `![Generated Image](${imgUrl})`;
+                        }
+                    }
                 }
             } catch {
                 return NextResponse.json({

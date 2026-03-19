@@ -36,6 +36,7 @@ const PROVIDER_MODELS: Record<string, { id: string; name: string }[]> = {
     { id: "grok-2-latest", name: "Grok 2" }
   ],
   openrouter: [
+    { id: "sourceful/riverflow-v2-fast", name: "Riverflow v2 Fast (Image Gen)" },
     { id: "nvidia/nemotron-3-super-120b-a12b:free", name: "Nemotron 3 Super 120B (Free, Reasoning)" },
     { id: "meta-llama/llama-3.3-70b-instruct:free", name: "Llama 3.3 70B (Free)" },
     { id: "meta-llama/llama-4-maverick:free", name: "Llama 4 Maverick (Free)" },
@@ -955,7 +956,19 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                           {testResult.content && (
                             <div className="mt-2">
                               <span className="text-[10px] text-slate-500">Generated content:</span>
-                              <p className="text-xs text-slate-200 mt-1 italic">"{testResult.content}"</p>
+                              {testResult.content.includes("![Generated Image](") ? (
+                                <div className="mt-2 space-y-2 max-h-96 overflow-y-auto">
+                                  {testResult.content.split("\\n\\n").map((part, i) => {
+                                    if (part.startsWith("![Generated Image](")) {
+                                      const url = part.slice(19, -1);
+                                      return <img key={i} src={url} alt="Generated" className="max-w-full h-auto rounded-lg border border-slate-700 object-contain" />;
+                                    }
+                                    return <p key={i} className="text-xs text-slate-200 italic">"{part}"</p>;
+                                  })}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-slate-200 mt-1 italic">"{testResult.content}"</p>
+                              )}
                             </div>
                           )}
                         </div>
