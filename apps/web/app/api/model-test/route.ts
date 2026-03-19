@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 
 import { getSessionUser } from "@/lib/session";
 
-const MODELS_TIMEOUT_MS = 20_000;
-const TEST_TIMEOUT_MS = 18_000;
+const MODELS_TIMEOUT_MS = 5_000;
+const TEST_TIMEOUT_MS = 10_000;
 const CHAT_TIMEOUT_MS = 95_000;
 
 type ChatMessage = {
@@ -18,6 +18,39 @@ type OpenRouterModelRecord = {
   context_length?: number;
   pricing?: Record<string, string | number | undefined>;
 };
+
+const FALLBACK_FREE_MODELS = [
+  {
+    id: "google/gemini-2.0-flash-exp:free",
+    name: "Gemini 2.0 Flash (Free)",
+    description: "Fastest fallback test model when the OpenRouter catalog is slow."
+  },
+  {
+    id: "meta-llama/llama-3.3-70b-instruct:free",
+    name: "Llama 3.3 70B (Free)",
+    description: "Large general chat model available on OpenRouter free tier."
+  },
+  {
+    id: "qwen/qwen3-30b-a3b:free",
+    name: "Qwen 3 30B (Free)",
+    description: "Reliable multilingual free model for quick connectivity checks."
+  },
+  {
+    id: "deepseek/deepseek-chat-v3-0324:free",
+    name: "DeepSeek V3 (Free)",
+    description: "Strong free chat model when available."
+  },
+  {
+    id: "nvidia/nemotron-3-super-120b-a12b:free",
+    name: "Nemotron 3 Super 120B (Free)",
+    description: "Heavier reasoning model. Slower but still testable."
+  },
+  {
+    id: "stepfun/step-3.5-flash:free",
+    name: "Step 3.5 Flash (Free)",
+    description: "Reasoning-capable free model that can be slower than Gemini."
+  }
+] as const;
 
 function getOpenRouterApiKey(): string | null {
   return (
@@ -78,6 +111,10 @@ function normalizeFreeModels(data: unknown) {
       contextLength: model.context_length ?? undefined
     }))
     .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function getFallbackModels() {
+  return FALLBACK_FREE_MODELS.map((model) => ({ ...model }));
 }
 
 function extractMessageContent(payload: unknown): { content: string; reasoning?: string } {
@@ -178,19 +215,19 @@ export async function GET() {
 
     return NextResponse.json({
       configured: true,
+      catalogSource: "live",
       models: normalizeFreeModels(payload)
     });
   } catch (error) {
-    const isTimeout = error instanceof Error && error.name === "AbortError";
     return NextResponse.json(
       {
         configured: true,
-        detail: isTimeout
-          ? "Timed out while loading free OpenRouter models."
-          : "Could not load free OpenRouter models.",
-        models: []
+        catalogSource: "fallback",
+        detail:
+          "OpenRouter model catalog was slow, so MixedWorld loaded a fallback list of common free models instead.",
+        models: getFallbackModels()
       },
-      { status: isTimeout ? 504 : 500 }
+      { status: 200 }
     );
   }
 }
@@ -230,8 +267,9 @@ export async function POST(request: Request) {
           body: JSON.stringify({
             model: payload.model,
             messages: [{ role: "user", content: "Reply with exactly OK." }],
-            max_tokens: 12,
-            temperature: 0
+            max_tokens: 8,
+            temperature: 0,
+            reasoning: { enabled: false }
           })
         },
         TEST_TIMEOUT_MS

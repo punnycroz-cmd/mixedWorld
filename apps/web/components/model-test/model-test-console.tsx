@@ -25,6 +25,8 @@ interface ChatMessage {
 }
 
 const CHAT_TIMEOUT_MS = 95_000;
+const MODEL_LOAD_TIMEOUT_MS = 12_000;
+const TEST_TIMEOUT_MS = 14_000;
 
 export function ModelTestConsole() {
   const [models, setModels] = useState<FreeModel[]>([]);
@@ -32,6 +34,7 @@ export function ModelTestConsole() {
   const [selectedModel, setSelectedModel] = useState("");
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
+  const [modelsNotice, setModelsNotice] = useState<string | null>(null);
   const [testingAll, setTestingAll] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
@@ -64,13 +67,21 @@ export function ModelTestConsole() {
     async function loadModels() {
       setModelsLoading(true);
       setModelsError(null);
+      setModelsNotice(null);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), MODEL_LOAD_TIMEOUT_MS);
       try {
-        const response = await fetch("/api/model-test", { cache: "no-store" });
+        const response = await fetch("/api/model-test", {
+          cache: "no-store",
+          signal: controller.signal
+        });
         const data = (await response.json()) as {
           configured?: boolean;
+          catalogSource?: "live" | "fallback";
           detail?: string;
           models?: FreeModel[];
         };
+        clearTimeout(timeout);
 
         if (!response.ok) {
           throw new Error(data.detail || "Could not load models.");
@@ -84,6 +95,7 @@ export function ModelTestConsole() {
         if (!cancelled) {
           setModels(nextModels);
           setSelectedModel((current) => current || nextModels[0]?.id || "");
+          setModelsNotice(data.catalogSource === "fallback" ? data.detail ?? null : null);
           setResults(
             nextModels.reduce<Record<string, ModelResult>>((acc, model) => {
               acc[model.id] = { status: "idle" };
@@ -92,8 +104,16 @@ export function ModelTestConsole() {
           );
         }
       } catch (err) {
+        clearTimeout(timeout);
         if (!cancelled) {
-          setModelsError(err instanceof Error ? err.message : "Could not load models.");
+          const isAbort = err instanceof Error && err.name === "AbortError";
+          setModelsError(
+            isAbort
+              ? "Timed out while loading models from the server. Refresh and try again."
+              : err instanceof Error
+                ? err.message
+                : "Could not load models."
+          );
         }
       } finally {
         if (!cancelled) {
@@ -114,15 +134,20 @@ export function ModelTestConsole() {
       [model.id]: { status: "testing" }
     }));
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), TEST_TIMEOUT_MS);
+
     try {
       const response = await fetch("/api/model-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           action: "test",
           model: model.id
         })
       });
+      clearTimeout(timeout);
 
       const data = (await response.json()) as {
         success?: boolean;
@@ -140,16 +165,29 @@ export function ModelTestConsole() {
       }));
 
       if (data.success) {
-        setSelectedModel((current) => current || model.id);
+        setSelectedModel((current) => {
+          if (!current) {
+            return model.id;
+          }
+
+          return results[current]?.status === "working" ? current : model.id;
+        });
       }
     } catch (err) {
       setResults((current) => ({
         ...current,
         [model.id]: {
           status: "failed",
-          detail: err instanceof Error ? err.message : "Unknown test error."
+          detail:
+            err instanceof Error && err.name === "AbortError"
+              ? `Timed out after ${TEST_TIMEOUT_MS / 1000}s.`
+              : err instanceof Error
+                ? err.message
+                : "Unknown test error."
         }
       }));
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -264,6 +302,11 @@ export function ModelTestConsole() {
             {modelsError ? (
               <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
                 {modelsError}
+              </div>
+            ) : null}
+            {modelsNotice ? (
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-200">
+                {modelsNotice}
               </div>
             ) : null}
           </div>
