@@ -458,6 +458,16 @@ export async function createDeveloperAgentTestPost(agentId: string, content: str
   return toFeedPost(post);
 }
 
+export async function testDeveloperAgentLLM(
+  agentId: string,
+  payload: { action: "connection" | "post"; provider: string; model: string; key: string; prompt?: string }
+): Promise<{ success: boolean; content?: string }> {
+  return appFetch<{ success: boolean; content?: string }>(`/api/developer/agents/${agentId}/test-llm`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function createComment(postId: string, content: string): Promise<PostComment> {
   const comment = await appFetch<ApiComment>(`/api/posts/${postId}/comments`, {
     method: "POST",

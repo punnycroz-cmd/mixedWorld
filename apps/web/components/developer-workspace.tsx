@@ -9,7 +9,8 @@ import {
   createDeveloperAgent,
   rotateDeveloperAgentCredentials,
   updateDeveloperAgentProfile,
-  createDeveloperAgentTestPost
+  createDeveloperAgentTestPost,
+  testDeveloperAgentLLM
 } from "@/lib/api";
 import type {
   AgentCredentialResult,
@@ -580,25 +581,20 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
     }
 
     try {
-      let success = false;
-      if (provider === "openai" || provider === "grok" || provider === "openrouter") {
-        const url = provider === "openai" ? "https://api.openai.com/v1/models"
-          : provider === "grok" ? "https://api.x.ai/v1/models"
-            : "https://openrouter.ai/api/v1/models";
-        const res = await fetch(url, { headers: { "Authorization": `Bearer ${key}` } });
-        success = res.ok;
-      } else if (provider === "gemini") {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
-        success = res.ok;
-      }
+      const res = await testDeveloperAgentLLM(selectedEntry.agent.id, {
+        action: "connection",
+        provider,
+        model: "",
+        key
+      });
 
-      if (success) {
+      if (res.success) {
         setRuntimeNotice("Connection successful! API key is valid.");
       } else {
         setRuntimeError("Connection failed. Please check your API key and provider.");
       }
     } catch (e) {
-      setRuntimeError("Connection failed. Network error.");
+      setRuntimeError(e instanceof Error ? `Connection failed: ${e.message}` : "Connection failed. Network error.");
     } finally {
       setTestPending(false);
     }
@@ -622,46 +618,22 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
     setRuntimeNotice("Generating test post...");
 
     try {
-      let contentText = "";
       const prompt = `Write a short test social media post (under 280 chars). Adopt this persona: ${editState.personalitySummary.slice(0, 300)}. Just output the text of the post.`;
 
-      if (provider === "openai" || provider === "grok" || provider === "openrouter") {
-        const url = provider === "openai" ? "https://api.openai.com/v1/chat/completions"
-          : provider === "grok" ? "https://api.x.ai/v1/chat/completions"
-            : "https://openrouter.ai/api/v1/chat/completions";
+      const res = await testDeveloperAgentLLM(selectedEntry.agent.id, {
+        action: "post",
+        provider,
+        model,
+        key,
+        prompt
+      });
 
-        const res = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${key}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: [{ role: "user", content: prompt }],
-            max_tokens: 150
-          })
-        });
-        if (!res.ok) throw new Error("AI provider API responded with error.");
-        const data = await res.json();
-        contentText = data.choices?.[0]?.message?.content || "";
-      } else if (provider === "gemini") {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }]
-          })
-        });
-        if (!res.ok) throw new Error("Gemini API responded with error.");
-        const data = await res.json();
-        contentText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      if (!res.success || !res.content) {
+        throw new Error("API responded with an error or empty content.");
       }
 
-      if (!contentText.trim()) throw new Error("Empty response from AI");
-
-      await createDeveloperAgentTestPost(selectedEntry.agent.id, contentText.trim());
-      setRuntimeNotice("Test post published successfully to the feed!");
+      await createDeveloperAgentTestPost(selectedEntry.agent.id, res.content);
+      setRuntimeNotice("Test post published successfully to the Feed!");
     } catch (e) {
       console.error(e);
       setRuntimeError(e instanceof Error ? `Failed to post: ${e.message}` : "Failed to create a test post.");
@@ -866,7 +838,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
               )}
 
               {studioTab === "runtime" && (
-                <div className="grid gap-8 lg:grid-cols-[1fr,320px]">
+                <div className="grid gap-8 xl:grid-cols-[1fr,320px]">
                   <div className="space-y-8">
                     <div className="inner-panel p-6 space-y-6">
                       <div className="space-y-2">
