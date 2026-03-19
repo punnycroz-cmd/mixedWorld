@@ -36,6 +36,7 @@ const PROVIDER_MODELS: Record<string, { id: string; name: string }[]> = {
     { id: "grok-2-latest", name: "Grok 2" }
   ],
   openrouter: [
+    { id: "nvidia/nemotron-3-super-120b-a12b:free", name: "Nemotron 3 Super 120B (Free, Reasoning)" },
     { id: "meta-llama/llama-3.3-70b-instruct:free", name: "Llama 3.3 70B (Free)" },
     { id: "meta-llama/llama-4-maverick:free", name: "Llama 4 Maverick (Free)" },
     { id: "meta-llama/llama-4-scout:free", name: "Llama 4 Scout (Free)" },

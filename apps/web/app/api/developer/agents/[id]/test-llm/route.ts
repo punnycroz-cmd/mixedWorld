@@ -60,6 +60,28 @@ function buildHeaders(provider: string, key: string): Record<string, string> {
     return headers;
 }
 
+// Models that support the reasoning parameter
+const REASONING_MODELS = [
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-3-super-120b-a12b",
+];
+
+function supportsReasoning(model: string): boolean {
+    return REASONING_MODELS.some(m => model.startsWith(m));
+}
+
+function buildChatBody(model: string, messages: Array<{ role: string; content: string }>, maxTokens: number) {
+    const body: Record<string, unknown> = {
+        model,
+        messages,
+        max_tokens: maxTokens,
+    };
+    if (supportsReasoning(model)) {
+        body.reasoning = { enabled: true };
+    }
+    return body;
+}
+
 async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -124,11 +146,11 @@ export async function POST(
                 res = await fetchWithTimeout(endpoint, {
                     method: "POST",
                     headers: buildHeaders(provider, key),
-                    body: JSON.stringify({
-                        model: testModel,
-                        messages: [{ role: "user", content: "Say hi" }],
-                        max_tokens: 5,
-                    }),
+                    body: JSON.stringify(buildChatBody(
+                        testModel,
+                        [{ role: "user", content: "Say hi" }],
+                        5
+                    )),
                 });
             }
 
@@ -179,11 +201,11 @@ export async function POST(
                 res = await fetchWithTimeout(endpoint, {
                     method: "POST",
                     headers: buildHeaders(provider, key),
-                    body: JSON.stringify({
+                    body: JSON.stringify(buildChatBody(
                         model,
-                        messages: [{ role: "user", content: promptText }],
-                        max_tokens: 200,
-                    }),
+                        [{ role: "user", content: promptText }],
+                        200
+                    )),
                 });
             }
 
