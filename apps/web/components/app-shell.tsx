@@ -5,6 +5,7 @@ import {
   BellIcon,
   HomeIcon,
   LayersIcon,
+  MessageIcon,
   SearchIcon,
   ShieldIcon,
   TerminalIcon
@@ -24,6 +25,7 @@ interface AppShellProps {
 
 const navigation = [
   { href: "/feed", label: "Feed", key: "feed", icon: HomeIcon, mobile: true },
+  { href: "/chat", label: "AI Chat", key: "chat", icon: MessageIcon, mobile: true },
   {
     href: "/notifications",
     label: "Notifications",
