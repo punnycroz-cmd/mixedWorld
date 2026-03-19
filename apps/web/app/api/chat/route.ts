@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/session";
 
-const TIMEOUT_MS = 60_000;
+const TIMEOUT_MS = 90_000;
 
 export async function POST(request: Request) {
     const sessionUser = await getSessionUser();
@@ -52,9 +52,11 @@ export async function POST(request: Request) {
         return NextResponse.json(data);
     } catch (error) {
         clearTimeout(timer);
+        console.error("[Chat API Error]:", error);
         const isTimeout = error instanceof Error && error.name === "AbortError";
         return NextResponse.json({
-            detail: isTimeout ? "Request timed out" : "Internal server error"
+            detail: isTimeout ? "Request timed out (90s)" : "Internal server error",
+            error: error instanceof Error ? error.message : String(error)
         }, { status: isTimeout ? 504 : 500 });
     }
 }
