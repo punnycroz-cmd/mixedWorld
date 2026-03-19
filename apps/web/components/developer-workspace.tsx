@@ -585,22 +585,36 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
       return;
     }
 
+    setRuntimeNotice(`⏳ Connecting to ${provider}...`);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000);
+
     try {
-      const res = await testDeveloperAgentLLM(selectedEntry.agent.id, {
-        action: "connection",
-        provider,
-        model: editState.modelName,
-        key
+      const response = await fetch(`/api/developer/agents/${selectedEntry.agent.id}/test-llm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "connection", provider, model: editState.modelName, key }),
+        signal: controller.signal,
       });
+      clearTimeout(timer);
+      const res = await response.json();
       setTestResult(res);
 
       if (res.success) {
         setRuntimeNotice(`✅ Connection successful! (${res.diagnostics?.latencyMs ?? "?"}ms)`);
       } else {
         setRuntimeError(res.detail || "Connection failed. Please check your API key and provider.");
+        setRuntimeNotice(null);
       }
     } catch (e) {
-      setRuntimeError(e instanceof Error ? `Connection failed: ${e.message}` : "Connection failed. Network error.");
+      clearTimeout(timer);
+      if (e instanceof Error && e.name === "AbortError") {
+        setRuntimeError("Request timed out after 20s. The provider may be unreachable.");
+      } else {
+        setRuntimeError(e instanceof Error ? `Connection failed: ${e.message}` : "Connection failed.");
+      }
+      setRuntimeNotice(null);
     } finally {
       setTestPending(false);
     }
@@ -622,31 +636,43 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
       return;
     }
 
-    setRuntimeNotice("⏳ Generating test post via AI...");
+    setRuntimeNotice(`⏳ Generating test post via ${provider} (${model})...`);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 25_000);
 
     try {
       const personaHint = editState.personalitySummary.trim() || editState.worldview.trim() || "a curious AI";
       const prompt = `Write a short test social media post (under 280 chars). Adopt this persona: ${personaHint.slice(0, 300)}. Just output the text of the post, nothing else.`;
 
-      const res = await testDeveloperAgentLLM(selectedEntry.agent.id, {
-        action: "post",
-        provider,
-        model,
-        key,
-        prompt
+      const response = await fetch(`/api/developer/agents/${selectedEntry.agent.id}/test-llm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "post", provider, model, key, prompt }),
+        signal: controller.signal,
       });
+      clearTimeout(timer);
+      const res = await response.json();
       setTestResult(res);
 
       if (!res.success || !res.content) {
         setRuntimeError(res.detail || "AI responded with empty content.");
+        setRuntimeNotice(null);
         return;
       }
 
+      setRuntimeNotice(`⏳ Publishing to Feed...`);
       await createDeveloperAgentTestPost(selectedEntry.agent.id, res.content);
       setRuntimeNotice(`✅ Test post published to the Feed! (${res.diagnostics?.latencyMs ?? "?"}ms)`);
     } catch (e) {
+      clearTimeout(timer);
       console.error(e);
-      setRuntimeError(e instanceof Error ? `Failed: ${e.message}` : "Failed to create a test post.");
+      if (e instanceof Error && e.name === "AbortError") {
+        setRuntimeError("Request timed out after 25s. The AI provider may be slow.");
+      } else {
+        setRuntimeError(e instanceof Error ? `Failed: ${e.message}` : "Failed to create a test post.");
+      }
+      setRuntimeNotice(null);
     } finally {
       setTestPending(false);
     }
@@ -900,8 +926,12 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                     <div className="inner-panel p-5 space-y-4">
                       <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Setup & Test</h4>
                       <div className="flex flex-col gap-2">
-                        <button className="button-secondary w-full" disabled={testPending} onClick={handleTestConnection} type="button">{testPending ? "Testing..." : "🔌 Test Connection"}</button>
-                        <button className="button-secondary w-full" disabled={testPending} onClick={handleTestPost} type="button">{testPending ? "Generating..." : "📝 Test Agent Post"}</button>
+                        <button className="button-secondary w-full flex items-center justify-center gap-2" disabled={testPending} onClick={handleTestConnection} type="button">
+                          {testPending ? <><span className="inline-block h-2 w-2 rounded-full bg-cyan-400 animate-pulse" /> Testing...</> : "🔌 Test Connection"}
+                        </button>
+                        <button className="button-secondary w-full flex items-center justify-center gap-2" disabled={testPending} onClick={handleTestPost} type="button">
+                          {testPending ? <><span className="inline-block h-2 w-2 rounded-full bg-violet-400 animate-pulse" /> Generating...</> : "📝 Test Agent Post"}
+                        </button>
                       </div>
                       {runtimeNotice && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs p-3 rounded-xl leading-relaxed">{runtimeNotice}</div>}
                       {runtimeError && <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-xs p-3 rounded-xl leading-relaxed">{runtimeError}</div>}

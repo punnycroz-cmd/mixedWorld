@@ -25,28 +25,18 @@ interface TestResult {
     };
 }
 
+const TIMEOUT_MS = 15_000;
+
 function getEndpoints(provider: string) {
     switch (provider) {
         case "openai":
-            return {
-                models: "https://api.openai.com/v1/models",
-                chat: "https://api.openai.com/v1/chat/completions",
-            };
+            return { chat: "https://api.openai.com/v1/chat/completions" };
         case "grok":
-            return {
-                models: "https://api.x.ai/v1/models",
-                chat: "https://api.x.ai/v1/chat/completions",
-            };
+            return { chat: "https://api.x.ai/v1/chat/completions" };
         case "openrouter":
-            return {
-                models: "https://openrouter.ai/api/v1/models",
-                chat: "https://openrouter.ai/api/v1/chat/completions",
-            };
+            return { chat: "https://openrouter.ai/api/v1/chat/completions" };
         case "gemini":
-            return {
-                models: "https://generativelanguage.googleapis.com/v1beta/models",
-                chat: "https://generativelanguage.googleapis.com/v1beta/models",
-            };
+            return { chat: "https://generativelanguage.googleapis.com/v1beta/models" };
         default:
             return null;
     }
@@ -62,12 +52,23 @@ function buildHeaders(provider: string, key: string): Record<string, string> {
         headers["HTTP-Referer"] = "https://mixedworld.ai";
         headers["X-Title"] = "MixedWorld";
     } else if (provider === "gemini") {
-        // Gemini uses key as query param, no auth header needed
+        // Gemini uses key as query param
     } else {
         headers["Authorization"] = `Bearer ${key}`;
     }
 
     return headers;
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        return res;
+    } finally {
+        clearTimeout(timer);
+    }
 }
 
 export async function POST(
@@ -100,14 +101,34 @@ export async function POST(
 
     try {
         if (action === "connection") {
+            // Test connection by making a tiny chat completion request
+            // This is more reliable than hitting /models (which can return huge payloads)
             const startMs = Date.now();
             let res: Response;
+            let endpoint: string;
 
             if (provider === "gemini") {
-                res = await fetch(`${endpoints.models}?key=${key}`);
+                const testModel = model || "gemini-2.5-flash";
+                endpoint = `${endpoints.chat}/${testModel}:generateContent?key=${key}`;
+                res = await fetchWithTimeout(endpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: "Say hi" }] }],
+                        generationConfig: { maxOutputTokens: 5 },
+                    }),
+                });
             } else {
-                res = await fetch(endpoints.models, {
+                endpoint = endpoints.chat;
+                const testModel = model || (provider === "openai" ? "gpt-4o-mini" : provider === "grok" ? "grok-beta" : "meta-llama/llama-3.3-70b-instruct:free");
+                res = await fetchWithTimeout(endpoint, {
+                    method: "POST",
                     headers: buildHeaders(provider, key),
+                    body: JSON.stringify({
+                        model: testModel,
+                        messages: [{ role: "user", content: "Say hi" }],
+                        max_tokens: 5,
+                    }),
                 });
             }
 
@@ -119,10 +140,11 @@ export async function POST(
                 success: res.ok,
                 diagnostics: {
                     provider,
-                    endpoint: provider === "gemini" ? `${endpoints.models}?key=***` : endpoints.models,
+                    model: model || "(default)",
+                    endpoint: provider === "gemini" ? endpoint.replace(key, "***") : endpoint,
                     statusCode: res.status,
                     statusText: res.statusText,
-                    responseSnippet: snippet,
+                    responseSnippet: res.ok ? undefined : snippet,
                     latencyMs,
                 },
             };
@@ -141,9 +163,11 @@ export async function POST(
             const startMs = Date.now();
             const promptText = prompt ?? "Write a short, friendly test post for social media.";
             let res: Response;
+            let endpoint: string;
 
             if (provider === "gemini") {
-                res = await fetch(`${endpoints.chat}/${model}:generateContent?key=${key}`, {
+                endpoint = `${endpoints.chat}/${model}:generateContent?key=${key}`;
+                res = await fetchWithTimeout(endpoint, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -151,8 +175,8 @@ export async function POST(
                     }),
                 });
             } else {
-                // OpenAI-compatible (openai, grok, openrouter)
-                res = await fetch(endpoints.chat, {
+                endpoint = endpoints.chat;
+                res = await fetchWithTimeout(endpoint, {
                     method: "POST",
                     headers: buildHeaders(provider, key),
                     body: JSON.stringify({
@@ -174,9 +198,7 @@ export async function POST(
                     diagnostics: {
                         provider,
                         model,
-                        endpoint: provider === "gemini"
-                            ? `${endpoints.chat}/${model}:generateContent?key=***`
-                            : endpoints.chat,
+                        endpoint: provider === "gemini" ? endpoint.replace(key, "***") : endpoint,
                         statusCode: res.status,
                         statusText: res.statusText,
                         responseSnippet: snippet,
@@ -188,7 +210,6 @@ export async function POST(
             let contentText = "";
             try {
                 const data = JSON.parse(responseText);
-
                 if (provider === "gemini") {
                     contentText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
                 } else {
@@ -201,7 +222,7 @@ export async function POST(
                     diagnostics: {
                         provider,
                         model,
-                        endpoint: endpoints.chat,
+                        endpoint: provider === "gemini" ? endpoint.replace(key, "***") : endpoint,
                         statusCode: res.status,
                         statusText: res.statusText,
                         responseSnippet: responseText.slice(0, 500),
@@ -217,7 +238,7 @@ export async function POST(
                     diagnostics: {
                         provider,
                         model,
-                        endpoint: endpoints.chat,
+                        endpoint: provider === "gemini" ? endpoint.replace(key, "***") : endpoint,
                         statusCode: res.status,
                         statusText: res.statusText,
                         responseSnippet: responseText.slice(0, 500),
@@ -232,7 +253,7 @@ export async function POST(
                 diagnostics: {
                     provider,
                     model,
-                    endpoint: endpoints.chat,
+                    endpoint: provider === "gemini" ? endpoint.replace(key, "***") : endpoint,
                     statusCode: res.status,
                     statusText: res.statusText,
                     latencyMs,
@@ -243,15 +264,19 @@ export async function POST(
         return NextResponse.json({ detail: "Invalid action." }, { status: 400 });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
+        const isTimeout = error instanceof Error && error.name === "AbortError";
         console.error("test-llm error:", message, error);
         return NextResponse.json({
             success: false,
-            detail: `Server error: ${message}`,
+            detail: isTimeout
+                ? `Request timed out after ${TIMEOUT_MS / 1000}s. The AI provider may be slow or unreachable.`
+                : `Server error: ${message}`,
             diagnostics: {
                 provider,
                 model,
                 endpoint: endpoints.chat,
+                latencyMs: isTimeout ? TIMEOUT_MS : undefined,
             },
-        } satisfies TestResult, { status: 500 });
+        } satisfies TestResult, { status: isTimeout ? 504 : 500 });
     }
 }
