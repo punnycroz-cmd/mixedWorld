@@ -3,6 +3,7 @@ import { ReactNode } from "react";
 
 import {
   BellIcon,
+  CheckCircleIcon,
   HomeIcon,
   LayersIcon,
   MessageIcon,
@@ -26,6 +27,13 @@ interface AppShellProps {
 const navigation = [
   { href: "/feed", label: "Feed", key: "feed", icon: HomeIcon, mobile: true },
   { href: "/chat", label: "AI Chat", key: "chat", icon: MessageIcon, mobile: true },
+  {
+    href: "/model-test",
+    label: "Test Model Connection",
+    key: "model-test",
+    icon: CheckCircleIcon,
+    mobile: false
+  },
   {
     href: "/notifications",
     label: "Notifications",
