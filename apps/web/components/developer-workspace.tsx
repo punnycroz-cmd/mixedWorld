@@ -12,6 +12,7 @@ import {
   createDeveloperAgentTestPost,
   testDeveloperAgentLLM
 } from "@/lib/api";
+import type { LLMTestResult } from "@/lib/api";
 import type {
   AgentCredentialResult,
   DeveloperAgentProfileUpdateInput,
@@ -35,12 +36,14 @@ const PROVIDER_MODELS: Record<string, { id: string; name: string }[]> = {
     { id: "grok-2-latest", name: "Grok 2" }
   ],
   openrouter: [
-    { id: "meta-llama/llama-3-8b-instruct:free", name: "Llama 3 8B (Free)" },
-    { id: "mistralai/mistral-7b-instruct:free", name: "Mistral 7B (Free)" },
-    { id: "meta-llama/llama-3.1-8b-instruct:free", name: "Llama 3.1 8B (Free)" },
-    { id: "google/gemma-2-9b-it:free", name: "Gemma 2 9B (Free)" },
-    { id: "nousresearch/hermes-3-llama-3.1-405b", name: "Hermes 3 405B" },
-    { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet" }
+    { id: "meta-llama/llama-3.3-70b-instruct:free", name: "Llama 3.3 70B (Free)" },
+    { id: "meta-llama/llama-4-maverick:free", name: "Llama 4 Maverick (Free)" },
+    { id: "meta-llama/llama-4-scout:free", name: "Llama 4 Scout (Free)" },
+    { id: "google/gemini-2.0-flash-exp:free", name: "Gemini 2.0 Flash (Free)" },
+    { id: "google/gemma-3-27b-it:free", name: "Gemma 3 27B (Free)" },
+    { id: "mistralai/mistral-small-3.1-24b-instruct:free", name: "Mistral Small 3.1 (Free)" },
+    { id: "deepseek/deepseek-chat-v3-0324:free", name: "DeepSeek V3 (Free)" },
+    { id: "qwen/qwen3-30b-a3b:free", name: "Qwen 3 30B (Free)" }
   ]
 };
 
@@ -307,6 +310,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [runtimeNotice, setRuntimeNotice] = useState<string | null>(null);
   const [testPending, setTestPending] = useState(false);
+  const [testResult, setTestResult] = useState<LLMTestResult | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   const selectedEntry = agents.find((entry) => entry.agent.id === selectedAgentId) ?? null;
@@ -570,6 +574,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
     if (!selectedEntry || !selectedRuntime) return;
     setRuntimeError(null);
     setRuntimeNotice(null);
+    setTestResult(null);
     setTestPending(true);
 
     const provider = editState.modelProvider;
@@ -584,14 +589,15 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
       const res = await testDeveloperAgentLLM(selectedEntry.agent.id, {
         action: "connection",
         provider,
-        model: "",
+        model: editState.modelName,
         key
       });
+      setTestResult(res);
 
       if (res.success) {
-        setRuntimeNotice("Connection successful! API key is valid.");
+        setRuntimeNotice(`✅ Connection successful! (${res.diagnostics?.latencyMs ?? "?"}ms)`);
       } else {
-        setRuntimeError("Connection failed. Please check your API key and provider.");
+        setRuntimeError(res.detail || "Connection failed. Please check your API key and provider.");
       }
     } catch (e) {
       setRuntimeError(e instanceof Error ? `Connection failed: ${e.message}` : "Connection failed. Network error.");
@@ -604,6 +610,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
     if (!selectedEntry || !selectedRuntime) return;
     setRuntimeError(null);
     setRuntimeNotice(null);
+    setTestResult(null);
     setTestPending(true);
 
     const provider = editState.modelProvider;
@@ -615,10 +622,11 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
       return;
     }
 
-    setRuntimeNotice("Generating test post...");
+    setRuntimeNotice("⏳ Generating test post via AI...");
 
     try {
-      const prompt = `Write a short test social media post (under 280 chars). Adopt this persona: ${editState.personalitySummary.slice(0, 300)}. Just output the text of the post.`;
+      const personaHint = editState.personalitySummary.trim() || editState.worldview.trim() || "a curious AI";
+      const prompt = `Write a short test social media post (under 280 chars). Adopt this persona: ${personaHint.slice(0, 300)}. Just output the text of the post, nothing else.`;
 
       const res = await testDeveloperAgentLLM(selectedEntry.agent.id, {
         action: "post",
@@ -627,16 +635,18 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
         key,
         prompt
       });
+      setTestResult(res);
 
       if (!res.success || !res.content) {
-        throw new Error("API responded with an error or empty content.");
+        setRuntimeError(res.detail || "AI responded with empty content.");
+        return;
       }
 
       await createDeveloperAgentTestPost(selectedEntry.agent.id, res.content);
-      setRuntimeNotice("Test post published successfully to the Feed!");
+      setRuntimeNotice(`✅ Test post published to the Feed! (${res.diagnostics?.latencyMs ?? "?"}ms)`);
     } catch (e) {
       console.error(e);
-      setRuntimeError(e instanceof Error ? `Failed to post: ${e.message}` : "Failed to create a test post.");
+      setRuntimeError(e instanceof Error ? `Failed: ${e.message}` : "Failed to create a test post.");
     } finally {
       setTestPending(false);
     }
@@ -890,9 +900,35 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                     <div className="inner-panel p-5 space-y-4">
                       <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Setup & Test</h4>
                       <div className="flex flex-col gap-2">
-                        <button className="button-secondary w-full" disabled={testPending || selectedRuntime?.isRunning} onClick={handleTestConnection} type="button">{testPending ? "Testing..." : "Test Connection"}</button>
-                        <button className="button-secondary w-full" disabled={testPending || selectedRuntime?.isRunning} onClick={handleTestPost} type="button">{testPending ? "Generating..." : "Test Agent Post"}</button>
+                        <button className="button-secondary w-full" disabled={testPending} onClick={handleTestConnection} type="button">{testPending ? "Testing..." : "🔌 Test Connection"}</button>
+                        <button className="button-secondary w-full" disabled={testPending} onClick={handleTestPost} type="button">{testPending ? "Generating..." : "📝 Test Agent Post"}</button>
                       </div>
+                      {runtimeNotice && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs p-3 rounded-xl leading-relaxed">{runtimeNotice}</div>}
+                      {runtimeError && <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-xs p-3 rounded-xl leading-relaxed">{runtimeError}</div>}
+                      {testResult?.diagnostics && (
+                        <div className="bg-slate-800/60 border border-slate-700/50 p-3 rounded-xl space-y-2">
+                          <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Diagnostics</h5>
+                          <div className="space-y-1 text-[11px] font-mono">
+                            <div className="flex justify-between gap-2"><span className="text-slate-500 shrink-0">Provider</span><span className="text-slate-300 truncate text-right">{testResult.diagnostics.provider}</span></div>
+                            {testResult.diagnostics.model && <div className="flex justify-between gap-2"><span className="text-slate-500 shrink-0">Model</span><span className="text-slate-300 truncate text-right">{testResult.diagnostics.model}</span></div>}
+                            <div className="flex justify-between gap-2"><span className="text-slate-500 shrink-0">Endpoint</span><span className="text-cyan-400 truncate text-right" title={testResult.diagnostics.endpoint}>{testResult.diagnostics.endpoint.replace(/https:\/\//, "").slice(0, 40)}</span></div>
+                            <div className="flex justify-between gap-2"><span className="text-slate-500 shrink-0">HTTP</span><span className={testResult.success ? "text-emerald-400" : "text-red-400"}>{testResult.diagnostics.statusCode} {testResult.diagnostics.statusText}</span></div>
+                            {testResult.diagnostics.latencyMs != null && <div className="flex justify-between gap-2"><span className="text-slate-500 shrink-0">Latency</span><span className="text-slate-300">{testResult.diagnostics.latencyMs}ms</span></div>}
+                          </div>
+                          {testResult.diagnostics.responseSnippet && !testResult.success && (
+                            <details className="mt-2">
+                              <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-slate-300">Response body</summary>
+                              <pre className="text-[10px] text-red-300/80 mt-1 whitespace-pre-wrap break-all max-h-32 overflow-y-auto bg-black/30 p-2 rounded-lg">{testResult.diagnostics.responseSnippet}</pre>
+                            </details>
+                          )}
+                          {testResult.content && (
+                            <div className="mt-2">
+                              <span className="text-[10px] text-slate-500">Generated content:</span>
+                              <p className="text-xs text-slate-200 mt-1 italic">"{testResult.content}"</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="inner-panel p-5 space-y-4">
                       <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Runtime State</h4>

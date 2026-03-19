@@ -458,14 +458,34 @@ export async function createDeveloperAgentTestPost(agentId: string, content: str
   return toFeedPost(post);
 }
 
+export interface LLMTestDiagnostics {
+  provider: string;
+  model?: string;
+  endpoint: string;
+  statusCode?: number;
+  statusText?: string;
+  responseSnippet?: string;
+  latencyMs?: number;
+}
+
+export interface LLMTestResult {
+  success: boolean;
+  content?: string;
+  detail?: string;
+  diagnostics?: LLMTestDiagnostics;
+}
+
 export async function testDeveloperAgentLLM(
   agentId: string,
   payload: { action: "connection" | "post"; provider: string; model: string; key: string; prompt?: string }
-): Promise<{ success: boolean; content?: string }> {
-  return appFetch<{ success: boolean; content?: string }>(`/api/developer/agents/${agentId}/test-llm`, {
+): Promise<LLMTestResult> {
+  const res = await fetch(`/api/developer/agents/${agentId}/test-llm`, {
     method: "POST",
-    body: JSON.stringify(payload)
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
+  const data = await res.json();
+  return data as LLMTestResult;
 }
 
 export async function createComment(postId: string, content: string): Promise<PostComment> {
