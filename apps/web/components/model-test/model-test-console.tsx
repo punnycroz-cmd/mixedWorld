@@ -13,7 +13,6 @@ import {
   PlayIcon,
   RefreshIcon,
   SendIcon,
-  UserIcon,
   XCircleIcon,
   ZapIcon
 } from "@/components/icons";
@@ -47,11 +46,13 @@ const CHAT_TIMEOUT_MS = 95_000;
 
 export function ModelTestConsole() {
   const [activeTab, setActiveTab] = useState<"tester" | "chat">("tester");
+  const [apiKey, setApiKey] = useState("");
+  const [savedKey, setSavedKey] = useState("");
   const [serverConfigured, setServerConfigured] = useState(false);
   const [serverNotice, setServerNotice] = useState<string | null>(null);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
-  const [models, setModels] = useState<OpenRouterFreeModel[]>([]);
+  const [models, setModels] = useState<OpenRouterFreeModel[]>(OPENROUTER_FREE_MODELS);
   const [modelStates, setModelStates] = useState<ModelState[]>(
     OPENROUTER_FREE_MODELS.map((model) => ({ id: model.id, status: "idle" }))
   );
@@ -81,6 +82,7 @@ export function ModelTestConsole() {
     () => new Set(workingModels.map((state) => state.id)),
     [workingModels]
   );
+  const hasUsableKey = serverConfigured || Boolean(savedKey.trim());
 
   const chatModelOptions = useMemo(() => {
     return showOnlyWorking ? models.filter((model) => workingModelIds.has(model.id)) : models;
@@ -89,6 +91,16 @@ export function ModelTestConsole() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, autoTestResults]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const storedKey = window.localStorage.getItem("or_api_key") || "";
+    setApiKey(storedKey);
+    setSavedKey(storedKey);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,8 +160,28 @@ export function ModelTestConsole() {
     }
   }, [chatModelOptions, selectedModel]);
 
+  function saveApiKey() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const trimmedKey = apiKey.trim();
+    window.localStorage.setItem("or_api_key", trimmedKey);
+    setSavedKey(trimmedKey);
+  }
+
+  function clearApiKey() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.removeItem("or_api_key");
+    setApiKey("");
+    setSavedKey("");
+  }
+
   async function testModel(modelId: string): Promise<boolean> {
-    if (!serverConfigured) return false;
+    if (!hasUsableKey) return false;
 
     setModelStates((current) =>
       current.map((model) => (model.id === modelId ? { ...model, status: "testing", error: undefined } : model))
@@ -165,7 +197,8 @@ export function ModelTestConsole() {
         signal: controller.signal,
         body: JSON.stringify({
           action: "test",
-          model: modelId
+          model: modelId,
+          key: savedKey || undefined
         })
       });
 
@@ -228,7 +261,7 @@ export function ModelTestConsole() {
   }
 
   async function sendMessage() {
-    if (!inputMessage.trim() || !selectedModel || isChatting || !serverConfigured) return;
+    if (!inputMessage.trim() || !selectedModel || isChatting || !hasUsableKey) return;
 
     const userMsg: Message = { role: "user", content: inputMessage };
     const nextMessages = [...messages, userMsg];
@@ -248,6 +281,7 @@ export function ModelTestConsole() {
         body: JSON.stringify({
           action: "chat",
           model: selectedModel,
+          key: savedKey || undefined,
           messages: nextMessages.map((message) => ({
             role: message.role,
             content: message.content
@@ -290,7 +324,7 @@ export function ModelTestConsole() {
   }
 
   async function runAutoTest() {
-    if (!serverConfigured || workingModels.length === 0) return;
+    if (!hasUsableKey || workingModels.length === 0) return;
 
     setIsAutoTesting(true);
     setAutoTestResults([]);
@@ -306,6 +340,7 @@ export function ModelTestConsole() {
           body: JSON.stringify({
             action: "chat",
             model: modelState.id,
+            key: savedKey || undefined,
             messages: [{ role: "user", content: autoTestPrompt }]
           })
         });
@@ -356,7 +391,7 @@ export function ModelTestConsole() {
         <div className="rounded-xl border border-white/8 bg-white/5 p-4">
           <div className="mb-3 flex items-center gap-2">
             <KeyIcon className="h-5 w-5 text-cyan-300" />
-            <h2 className="font-semibold text-white">Server API Key Setup</h2>
+            <h2 className="font-semibold text-white">API Key Setup</h2>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -364,18 +399,37 @@ export function ModelTestConsole() {
               className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
                 serverConfigured
                   ? "bg-emerald-500/15 text-emerald-300"
-                  : "bg-red-500/15 text-red-300"
+                  : "bg-amber-500/15 text-amber-300"
               }`}
             >
               {serverConfigured ? (
                 <>
                   <CheckCircleIcon className="h-4 w-4" />
-                  OpenRouter API key detected on server
+                  Server key detected
                 </>
               ) : (
                 <>
                   <XCircleIcon className="h-4 w-4" />
-                  OpenRouter API key missing on server
+                  Server key missing
+                </>
+              )}
+            </span>
+            <span
+              className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
+                savedKey
+                  ? "bg-cyan-500/15 text-cyan-300"
+                  : "bg-white/6 text-slate-400"
+              }`}
+            >
+              {savedKey ? (
+                <>
+                  <CheckCircleIcon className="h-4 w-4" />
+                  Browser key saved
+                </>
+              ) : (
+                <>
+                  <KeyIcon className="h-4 w-4" />
+                  No browser key yet
                 </>
               )}
             </span>
@@ -388,11 +442,35 @@ export function ModelTestConsole() {
             </button>
           </div>
 
+          <div className="mt-4 flex flex-wrap gap-2">
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              placeholder="Paste your OpenRouter API key (sk-or-v1-...)"
+              className="input-field !h-11 !min-h-0 min-w-[280px] flex-1"
+            />
+            <button
+              onClick={saveApiKey}
+              disabled={!apiKey.trim()}
+              className="button-primary !h-11 !px-4 !text-sm disabled:opacity-50"
+            >
+              Save key
+            </button>
+            <button
+              onClick={clearApiKey}
+              disabled={!savedKey}
+              className="button-secondary !h-11 !px-4 !text-sm disabled:opacity-50"
+            >
+              Clear
+            </button>
+          </div>
+
           {serverNotice ? <p className="mt-3 text-sm text-slate-400">{serverNotice}</p> : null}
           {modelsError ? <p className="mt-3 text-sm text-red-400">{modelsError}</p> : null}
 
           <p className="mt-3 text-xs text-slate-500">
-            Manage your secret in Vercel project settings. OpenRouter keys live at{" "}
+            The tester can use either the saved browser key or the server key in Vercel. OpenRouter keys live at{" "}
             <a
               href="https://openrouter.ai/keys"
               target="_blank"
@@ -442,7 +520,7 @@ export function ModelTestConsole() {
             </div>
             <button
               onClick={() => void testAllModels()}
-              disabled={!serverConfigured || isTestingAll || modelsLoading}
+              disabled={!hasUsableKey || isTestingAll || modelsLoading}
               className="button-primary !h-10 !px-4 !text-sm disabled:opacity-50"
             >
               {isTestingAll ? <LoaderIcon className="mr-2 h-4 w-4 animate-spin" /> : <RefreshIcon className="mr-2 h-4 w-4" />}
@@ -450,10 +528,10 @@ export function ModelTestConsole() {
             </button>
           </div>
 
-          {!serverConfigured ? (
+          {!hasUsableKey ? (
             <div className="p-10 text-center text-slate-500">
               <KeyIcon className="mx-auto mb-3 h-12 w-12 opacity-50" />
-              <p>Set your OpenRouter key on the server first.</p>
+              <p>Save a browser key above or configure one on the server.</p>
             </div>
           ) : null}
 
@@ -503,7 +581,7 @@ export function ModelTestConsole() {
                       {state.status === "testing" ? <LoaderIcon className="h-5 w-5 animate-spin text-cyan-300" /> : null}
                       <button
                         onClick={() => void testModel(model.id)}
-                        disabled={!serverConfigured || state.status === "testing" || isTestingAll}
+                        disabled={!hasUsableKey || state.status === "testing" || isTestingAll}
                         className="button-secondary !h-9 !px-3 !text-sm disabled:opacity-50"
                       >
                         Test
@@ -592,7 +670,7 @@ export function ModelTestConsole() {
                 />
                 <button
                   onClick={() => void runAutoTest()}
-                  disabled={!serverConfigured || workingModels.length === 0 || isAutoTesting}
+                  disabled={!hasUsableKey || workingModels.length === 0 || isAutoTesting}
                   className="button-primary !h-10 !px-4 !text-sm disabled:opacity-50"
                 >
                   {isAutoTesting ? <LoaderIcon className="mr-2 h-4 w-4 animate-spin" /> : <PlayIcon className="mr-2 h-4 w-4" />}
@@ -699,18 +777,18 @@ export function ModelTestConsole() {
                     }
                   }}
                   placeholder={
-                    !serverConfigured
-                      ? "Configure the server API key first"
+                    !hasUsableKey
+                      ? "Save a browser key or configure the server key first"
                       : chatModelOptions.length === 0
                         ? "Run connection test first"
                         : "Type your message..."
                   }
-                  disabled={!serverConfigured || isChatting || chatModelOptions.length === 0}
+                  disabled={!hasUsableKey || isChatting || chatModelOptions.length === 0}
                   className="input-field !h-10 !min-h-0 flex-1"
                 />
                 <button
                   onClick={() => void sendMessage()}
-                  disabled={!serverConfigured || !inputMessage.trim() || isChatting || chatModelOptions.length === 0}
+                  disabled={!hasUsableKey || !inputMessage.trim() || isChatting || chatModelOptions.length === 0}
                   className="button-primary !h-10 !px-4 disabled:opacity-50"
                 >
                   <SendIcon className="h-5 w-5" />

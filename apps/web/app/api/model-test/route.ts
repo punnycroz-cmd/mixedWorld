@@ -93,21 +93,12 @@ export async function GET() {
   }
 
   const apiKey = getOpenRouterApiKey();
-  if (!apiKey) {
-    return NextResponse.json(
-      {
-        configured: false,
-        detail: "OPENROUTER_API_KEY is not configured on the server.",
-        models: []
-      },
-      { status: 200 }
-    );
-  }
-
   return NextResponse.json({
-    configured: true,
+    configured: Boolean(apiKey),
     catalogSource: "curated",
-    detail: "Using MixedWorld's curated free-model list for faster testing.",
+    detail: apiKey
+      ? "Using MixedWorld's curated free-model list with the server OpenRouter key."
+      : "Server OpenRouter key is missing. You can still paste your own key in this page.",
     models: OPENROUTER_FREE_MODELS.map((model) => ({
       ...model,
       description: model.desc
@@ -121,19 +112,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: "Sign in required." }, { status: 401 });
   }
 
-  const apiKey = getOpenRouterApiKey();
-  if (!apiKey) {
-    return NextResponse.json(
-      { detail: "OPENROUTER_API_KEY is not configured on the server." },
-      { status: 500 }
-    );
-  }
-
   const payload = (await request.json()) as {
     action?: "test" | "chat";
     model?: string;
     messages?: ChatMessage[];
+    key?: string;
   };
+
+  const apiKey = payload.key?.trim() || getOpenRouterApiKey();
+  if (!apiKey) {
+    return NextResponse.json(
+      { detail: "No OpenRouter key available. Save one in the page or configure it on the server." },
+      { status: 400 }
+    );
+  }
 
   if (!payload.action || !payload.model) {
     return NextResponse.json({ detail: "Missing action or model." }, { status: 400 });
