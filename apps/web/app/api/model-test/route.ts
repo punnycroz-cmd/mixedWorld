@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { OPENROUTER_FREE_MODELS } from "@/lib/openrouter-free-models";
 import { getSessionUser } from "@/lib/session";
 
-const TEST_TIMEOUT_MS = 10_000;
+const TEST_TIMEOUT_MS = 20_000;
 const CHAT_TIMEOUT_MS = 95_000;
 
 type ChatMessage = {
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
   }
 
   const payload = (await request.json()) as {
-    action?: "test" | "chat";
+    action?: "test" | "chat" | "limits";
     model?: string;
     messages?: ChatMessage[];
     key?: string;
@@ -127,11 +127,61 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!payload.action || !payload.model) {
-    return NextResponse.json({ detail: "Missing action or model." }, { status: 400 });
+  if (!payload.action) {
+    return NextResponse.json({ detail: "Missing action." }, { status: 400 });
   }
 
   try {
+    if (payload.action === "limits") {
+      const response = await fetchWithTimeout(
+        "https://openrouter.ai/api/v1/key",
+        {
+          method: "GET",
+          headers: buildHeaders(apiKey)
+        },
+        TEST_TIMEOUT_MS
+      );
+
+      const responseText = await response.text();
+      if (!response.ok) {
+        return NextResponse.json(
+          {
+            detail: `OpenRouter limits request returned HTTP ${response.status}.`,
+            raw: responseText.slice(0, 500)
+          },
+          { status: response.status }
+        );
+      }
+
+      const responsePayload = JSON.parse(responseText) as {
+        data?: {
+          label?: string;
+          limit?: number | null;
+          limit_remaining?: number | null;
+          limit_reset?: string | null;
+          usage?: number;
+          usage_daily?: number;
+          usage_weekly?: number;
+          usage_monthly?: number;
+          byok_usage?: number;
+          byok_usage_daily?: number;
+          byok_usage_weekly?: number;
+          byok_usage_monthly?: number;
+          is_free_tier?: boolean;
+          rate_limit?: unknown;
+        };
+      };
+
+      return NextResponse.json({
+        detail: "Fetched current OpenRouter key limits.",
+        limits: responsePayload.data ?? null
+      });
+    }
+
+    if (!payload.model) {
+      return NextResponse.json({ detail: "Missing model." }, { status: 400 });
+    }
+
     if (payload.action === "test") {
       const startedAt = Date.now();
       const response = await fetchWithTimeout(
@@ -160,6 +210,7 @@ export async function POST(request: Request) {
             detail: `OpenRouter returned HTTP ${response.status}.`,
             latencyMs,
             statusCode: response.status,
+            rateLimited: response.status === 429,
             responseSnippet: responseText.slice(0, 300)
           },
           { status: 200 }

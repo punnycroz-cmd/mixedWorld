@@ -43,6 +43,25 @@ interface Message {
 
 const TEST_TIMEOUT_MS = 14_000;
 const CHAT_TIMEOUT_MS = 95_000;
+const TEST_ALL_DELAY_MS = 3_200;
+
+type TestResult = "success" | "failed" | "rate_limited";
+
+type LimitInfo = {
+  label?: string;
+  limit?: number | null;
+  limit_remaining?: number | null;
+  limit_reset?: string | null;
+  usage?: number;
+  usage_daily?: number;
+  usage_weekly?: number;
+  usage_monthly?: number;
+  byok_usage?: number;
+  byok_usage_daily?: number;
+  byok_usage_weekly?: number;
+  byok_usage_monthly?: number;
+  is_free_tier?: boolean;
+};
 
 export function ModelTestConsole() {
   const [activeTab, setActiveTab] = useState<"tester" | "chat">("tester");
@@ -67,6 +86,9 @@ export function ModelTestConsole() {
   const [autoTestPrompt, setAutoTestPrompt] = useState("Explain quantum computing in 2 sentences.");
   const [showOnlyWorking, setShowOnlyWorking] = useState(true);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [limitsLoading, setLimitsLoading] = useState(false);
+  const [limitsError, setLimitsError] = useState<string | null>(null);
+  const [limitInfo, setLimitInfo] = useState<LimitInfo | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const modelMap = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
@@ -180,8 +202,46 @@ export function ModelTestConsole() {
     setSavedKey("");
   }
 
-  async function testModel(modelId: string): Promise<boolean> {
-    if (!hasUsableKey) return false;
+  async function checkLimits() {
+    if (!hasUsableKey) {
+      setLimitsError("Add a browser key or configure a server key first.");
+      return;
+    }
+
+    setLimitsLoading(true);
+    setLimitsError(null);
+
+    try {
+      const response = await fetch("/api/model-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "limits",
+          key: savedKey || undefined
+        })
+      });
+
+      const data = (await response.json()) as {
+        detail?: string;
+        limits?: LimitInfo | null;
+        raw?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.raw || "Could not fetch limits.");
+      }
+
+      setLimitInfo(data.limits ?? null);
+    } catch (error) {
+      setLimitsError(error instanceof Error ? error.message : "Could not fetch limits.");
+      setLimitInfo(null);
+    } finally {
+      setLimitsLoading(false);
+    }
+  }
+
+  async function testModel(modelId: string): Promise<TestResult> {
+    if (!hasUsableKey) return "failed";
 
     setModelStates((current) =>
       current.map((model) => (model.id === modelId ? { ...model, status: "testing", error: undefined } : model))
@@ -207,6 +267,7 @@ export function ModelTestConsole() {
         success?: boolean;
         detail?: string;
         latencyMs?: number;
+        rateLimited?: boolean;
       };
 
       if (data.success) {
@@ -217,7 +278,7 @@ export function ModelTestConsole() {
               : model
           )
         );
-        return true;
+        return "success";
       }
 
       setModelStates((current) =>
@@ -227,7 +288,7 @@ export function ModelTestConsole() {
             : model
         )
       );
-      return false;
+      return data.rateLimited ? "rate_limited" : "failed";
     } catch (error) {
       clearTimeout(timeout);
       setModelStates((current) =>
@@ -244,17 +305,33 @@ export function ModelTestConsole() {
             : model
         )
       );
-      return false;
+      return "failed";
     }
   }
 
   async function testAllModels() {
+    if (!hasUsableKey) {
+      setModelsError("Add a browser key or configure a server key first.");
+      return;
+    }
+
     setIsTestingAll(true);
+    setModelsError(null);
     setModelStates(models.map((model) => ({ id: model.id, status: "idle" })));
 
-    for (const model of models) {
-      await testModel(model.id);
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    for (let index = 0; index < models.length; index += 1) {
+      const model = models[index];
+      const result = await testModel(model.id);
+      if (result === "rate_limited") {
+        setModelsError(
+          "Rate limit reached while running Test All. Wait a minute and run again, or test models one by one."
+        );
+        break;
+      }
+
+      if (index < models.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, TEST_ALL_DELAY_MS));
+      }
     }
 
     setIsTestingAll(false);
@@ -464,10 +541,48 @@ export function ModelTestConsole() {
             >
               Clear
             </button>
+            <button
+              onClick={() => void checkLimits()}
+              disabled={!hasUsableKey || limitsLoading}
+              className="button-secondary !h-11 !px-4 !text-sm disabled:opacity-50"
+            >
+              {limitsLoading ? <LoaderIcon className="mr-2 h-4 w-4 animate-spin" /> : <BarChartIcon className="mr-2 h-4 w-4" />}
+              Check limits
+            </button>
           </div>
 
           {serverNotice ? <p className="mt-3 text-sm text-slate-400">{serverNotice}</p> : null}
           {modelsError ? <p className="mt-3 text-sm text-red-400">{modelsError}</p> : null}
+          {limitsError ? <p className="mt-2 text-sm text-red-400">{limitsError}</p> : null}
+
+          {limitInfo ? (
+            <div className="mt-3 rounded-lg border border-white/8 bg-white/4 p-3 text-sm text-slate-300">
+              <div className="grid gap-2 md:grid-cols-2">
+                <p>
+                  <span className="text-slate-400">Key:</span> {limitInfo.label || "Unknown"}
+                </p>
+                <p>
+                  <span className="text-slate-400">Free tier:</span> {limitInfo.is_free_tier ? "Yes" : "No"}
+                </p>
+                <p>
+                  <span className="text-slate-400">Limit:</span>{" "}
+                  {limitInfo.limit ?? "N/A"}
+                </p>
+                <p>
+                  <span className="text-slate-400">Remaining:</span>{" "}
+                  {limitInfo.limit_remaining ?? "N/A"}
+                </p>
+                <p>
+                  <span className="text-slate-400">Usage daily:</span>{" "}
+                  {limitInfo.usage_daily ?? limitInfo.byok_usage_daily ?? "N/A"}
+                </p>
+                <p>
+                  <span className="text-slate-400">Reset:</span>{" "}
+                  {limitInfo.limit_reset ?? "N/A"}
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           <p className="mt-3 text-xs text-slate-500">
             The tester can use either the saved browser key or the server key in Vercel. OpenRouter keys live at{" "}
@@ -526,6 +641,9 @@ export function ModelTestConsole() {
               {isTestingAll ? <LoaderIcon className="mr-2 h-4 w-4 animate-spin" /> : <RefreshIcon className="mr-2 h-4 w-4" />}
               {isTestingAll ? "Testing..." : "Test All Models"}
             </button>
+            <p className="w-full text-xs text-slate-500">
+              Test all runs one model at a time with a {TEST_ALL_DELAY_MS / 1000}s gap and auto-stops on rate limits.
+            </p>
           </div>
 
           {!hasUsableKey ? (
