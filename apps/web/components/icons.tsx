@@ -240,3 +240,99 @@ export function CheckCircleIcon(props: IconProps) {
     </IconBase>
   );
 }
+
+export function XCircleIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m9.5 9.5 5 5" />
+      <path d="m14.5 9.5-5 5" />
+    </IconBase>
+  );
+}
+
+export function RefreshIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M20 5v5h-5" />
+      <path d="M4 19v-5h5" />
+      <path d="M6.5 9A7 7 0 0 1 18 6.5L20 10" />
+      <path d="M17.5 15A7 7 0 0 1 6 17.5L4 14" />
+    </IconBase>
+  );
+}
+
+export function LoaderIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 3a9 9 0 1 0 9 9" />
+    </IconBase>
+  );
+}
+
+export function KeyIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="7.5" cy="14.5" r="3.5" />
+      <path d="M11 14.5h10" />
+      <path d="M18 11.5v6" />
+      <path d="M15 12.5v4" />
+    </IconBase>
+  );
+}
+
+export function ZapIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />
+    </IconBase>
+  );
+}
+
+export function DatabaseIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <ellipse cx="12" cy="6" rx="7" ry="3" />
+      <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
+      <path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+    </IconBase>
+  );
+}
+
+export function ExternalLinkIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M14 5h5v5" />
+      <path d="M10 14 19 5" />
+      <path d="M19 13v4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4" />
+    </IconBase>
+  );
+}
+
+export function PlayIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m8 6 10 6-10 6Z" />
+    </IconBase>
+  );
+}
+
+export function BarChartIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M4 20V10" />
+      <path d="M10 20V4" />
+      <path d="M16 20v-7" />
+      <path d="M22 20v-11" />
+    </IconBase>
+  );
+}
+
+export function SendIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M21 3 10 14" />
+      <path d="m21 3-7 18-4-7-7-4 18-7Z" />
+    </IconBase>
+  );
+}

@@ -2,64 +2,93 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { BotIcon, CheckCircleIcon, MessageIcon, UserIcon } from "@/components/icons";
-import { Panel } from "@/components/panel";
+import {
+  BarChartIcon,
+  CheckCircleIcon,
+  DatabaseIcon,
+  ExternalLinkIcon,
+  KeyIcon,
+  LoaderIcon,
+  MessageIcon,
+  PlayIcon,
+  RefreshIcon,
+  SendIcon,
+  UserIcon,
+  XCircleIcon,
+  ZapIcon
+} from "@/components/icons";
+import { OPENROUTER_FREE_MODELS, type OpenRouterFreeModel } from "@/lib/openrouter-free-models";
 
-interface FreeModel {
+type ModelStatus = "idle" | "testing" | "success" | "error";
+type ChatMode = "single" | "auto";
+
+interface ModelState {
   id: string;
-  name: string;
-  description?: string;
-  contextLength?: number;
+  status: ModelStatus;
+  latency?: number;
+  error?: string;
 }
 
-interface ModelResult {
-  status: "idle" | "testing" | "working" | "failed";
-  detail?: string;
-  latencyMs?: number;
+interface AutoTestResult {
+  modelId: string;
+  modelName: string;
+  content: string;
+  latency: number;
 }
 
-interface ChatMessage {
+interface Message {
   role: "user" | "assistant";
   content: string;
-  reasoning_details?: string;
+  model?: string;
 }
 
-const CHAT_TIMEOUT_MS = 95_000;
-const MODEL_LOAD_TIMEOUT_MS = 12_000;
 const TEST_TIMEOUT_MS = 14_000;
+const CHAT_TIMEOUT_MS = 95_000;
 
 export function ModelTestConsole() {
-  const [models, setModels] = useState<FreeModel[]>([]);
-  const [results, setResults] = useState<Record<string, ModelResult>>({});
-  const [selectedModel, setSelectedModel] = useState("");
+  const [activeTab, setActiveTab] = useState<"tester" | "chat">("tester");
+  const [serverConfigured, setServerConfigured] = useState(false);
+  const [serverNotice, setServerNotice] = useState<string | null>(null);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
-  const [modelsNotice, setModelsNotice] = useState<string | null>(null);
-  const [testingAll, setTestingAll] = useState(false);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
+  const [models, setModels] = useState<OpenRouterFreeModel[]>([]);
+  const [modelStates, setModelStates] = useState<ModelState[]>(
+    OPENROUTER_FREE_MODELS.map((model) => ({ id: model.id, status: "idle" }))
+  );
+  const [isTestingAll, setIsTestingAll] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(OPENROUTER_FREE_MODELS[0]?.id ?? "");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputMessage, setInputMessage] = useState("");
+  const [isChatting, setIsChatting] = useState(false);
+  const [chatMode, setChatMode] = useState<ChatMode>("single");
+  const [autoTestResults, setAutoTestResults] = useState<AutoTestResult[]>([]);
+  const [isAutoTesting, setIsAutoTesting] = useState(false);
+  const [autoTestPrompt, setAutoTestPrompt] = useState("Explain quantum computing in 2 sentences.");
+  const [showOnlyWorking, setShowOnlyWorking] = useState(true);
   const [chatError, setChatError] = useState<string | null>(null);
-  const [chatStatus, setChatStatus] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const modelMap = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
   const workingModels = useMemo(
-    () => models.filter((model) => results[model.id]?.status === "working"),
-    [models, results]
+    () => modelStates.filter((state) => state.status === "success"),
+    [modelStates]
+  );
+  const failedModels = useMemo(
+    () => modelStates.filter((state) => state.status === "error"),
+    [modelStates]
+  );
+  const workingModelIds = useMemo(
+    () => new Set(workingModels.map((state) => state.id)),
+    [workingModels]
   );
 
-  const recommendedModel = useMemo(() => {
-    return workingModels
-      .map((model) => ({
-        model,
-        latencyMs: results[model.id]?.latencyMs ?? Number.MAX_SAFE_INTEGER
-      }))
-      .sort((left, right) => left.latencyMs - right.latencyMs)[0]?.model;
-  }, [results, workingModels]);
+  const chatModelOptions = useMemo(() => {
+    return showOnlyWorking ? models.filter((model) => workingModelIds.has(model.id)) : models;
+  }, [models, showOnlyWorking, workingModelIds]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
+  }, [messages, autoTestResults]);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,53 +96,33 @@ export function ModelTestConsole() {
     async function loadModels() {
       setModelsLoading(true);
       setModelsError(null);
-      setModelsNotice(null);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), MODEL_LOAD_TIMEOUT_MS);
+      setServerNotice(null);
+
       try {
-        const response = await fetch("/api/model-test", {
-          cache: "no-store",
-          signal: controller.signal
-        });
+        const response = await fetch("/api/model-test", { cache: "no-store" });
         const data = (await response.json()) as {
           configured?: boolean;
-          catalogSource?: "live" | "fallback";
           detail?: string;
-          models?: FreeModel[];
+          models?: OpenRouterFreeModel[];
         };
-        clearTimeout(timeout);
 
         if (!response.ok) {
-          throw new Error(data.detail || "Could not load models.");
+          throw new Error(data.detail || "Could not load model tester.");
         }
 
-        if (!data.configured) {
-          throw new Error(data.detail || "OpenRouter key is not configured on the server.");
-        }
-
-        const nextModels = data.models ?? [];
         if (!cancelled) {
+          const nextModels = data.models?.length ? data.models : OPENROUTER_FREE_MODELS;
+          setServerConfigured(Boolean(data.configured));
+          setServerNotice(data.detail ?? null);
           setModels(nextModels);
-          setSelectedModel((current) => current || nextModels[0]?.id || "");
-          setModelsNotice(data.catalogSource === "fallback" ? data.detail ?? null : null);
-          setResults(
-            nextModels.reduce<Record<string, ModelResult>>((acc, model) => {
-              acc[model.id] = { status: "idle" };
-              return acc;
-            }, {})
-          );
+          setSelectedModel(nextModels[0]?.id ?? "");
+          setModelStates(nextModels.map((model) => ({ id: model.id, status: "idle" })));
         }
-      } catch (err) {
-        clearTimeout(timeout);
+      } catch (error) {
         if (!cancelled) {
-          const isAbort = err instanceof Error && err.name === "AbortError";
-          setModelsError(
-            isAbort
-              ? "Timed out while loading models from the server. Refresh and try again."
-              : err instanceof Error
-                ? err.message
-                : "Could not load models."
-          );
+          setModelsError(error instanceof Error ? error.message : "Could not load model tester.");
+          setModels(OPENROUTER_FREE_MODELS);
+          setModelStates(OPENROUTER_FREE_MODELS.map((model) => ({ id: model.id, status: "idle" })));
         }
       } finally {
         if (!cancelled) {
@@ -128,137 +137,6 @@ export function ModelTestConsole() {
     };
   }, []);
 
-  async function runSingleTest(model: FreeModel) {
-    setResults((current) => ({
-      ...current,
-      [model.id]: { status: "testing" }
-    }));
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), TEST_TIMEOUT_MS);
-
-    try {
-      const response = await fetch("/api/model-test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          action: "test",
-          model: model.id
-        })
-      });
-      clearTimeout(timeout);
-
-      const data = (await response.json()) as {
-        success?: boolean;
-        detail?: string;
-        latencyMs?: number;
-      };
-
-      setResults((current) => ({
-        ...current,
-        [model.id]: {
-          status: data.success ? "working" : "failed",
-          detail: data.detail,
-          latencyMs: data.latencyMs
-        }
-      }));
-
-      if (data.success) {
-        setSelectedModel((current) => {
-          if (!current) {
-            return model.id;
-          }
-
-          return results[current]?.status === "working" ? current : model.id;
-        });
-      }
-    } catch (err) {
-      setResults((current) => ({
-        ...current,
-        [model.id]: {
-          status: "failed",
-          detail:
-            err instanceof Error && err.name === "AbortError"
-              ? `Timed out after ${TEST_TIMEOUT_MS / 1000}s.`
-              : err instanceof Error
-                ? err.message
-                : "Unknown test error."
-        }
-      }));
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
-  async function handleTestAll() {
-    setTestingAll(true);
-    for (const model of models) {
-      await runSingleTest(model);
-    }
-    setTestingAll(false);
-  }
-
-  async function handleChatSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!chatInput.trim() || !selectedModel || chatLoading) return;
-
-    const userMessage: ChatMessage = { role: "user", content: chatInput };
-    const nextMessages = [...chatMessages, userMessage];
-    setChatMessages(nextMessages);
-    setChatInput("");
-    setChatError(null);
-    setChatLoading(true);
-    setChatStatus(`Contacting ${models.find((model) => model.id === selectedModel)?.name ?? "model"}...`);
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
-
-    try {
-      const response = await fetch("/api/model-test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "chat",
-          model: selectedModel,
-          messages: nextMessages
-        }),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeout);
-      const data = (await response.json()) as {
-        detail?: string;
-        message?: ChatMessage;
-      };
-
-      if (!response.ok) {
-        throw new Error(data.detail || "Chat request failed.");
-      }
-
-      if (!data.message?.content) {
-        throw new Error("Model returned no visible reply.");
-      }
-
-      setChatMessages([...nextMessages, data.message]);
-    } catch (err) {
-      clearTimeout(timeout);
-      const isAbort = err instanceof Error && err.name === "AbortError";
-      setChatError(
-        isAbort
-          ? "Chat request timed out after 95 seconds. Try one of the working models above."
-          : err instanceof Error
-            ? err.message
-            : "Unknown chat error."
-      );
-    } finally {
-      setChatLoading(false);
-      setChatStatus(null);
-    }
-  }
-
-  const chatModelOptions = workingModels.length > 0 ? workingModels : models;
-
   useEffect(() => {
     if (!selectedModel && chatModelOptions[0]) {
       setSelectedModel(chatModelOptions[0].id);
@@ -270,258 +148,586 @@ export function ModelTestConsole() {
     }
   }, [chatModelOptions, selectedModel]);
 
+  async function testModel(modelId: string): Promise<boolean> {
+    if (!serverConfigured) return false;
+
+    setModelStates((current) =>
+      current.map((model) => (model.id === modelId ? { ...model, status: "testing", error: undefined } : model))
+    );
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), TEST_TIMEOUT_MS);
+
+    try {
+      const response = await fetch("/api/model-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          action: "test",
+          model: modelId
+        })
+      });
+
+      clearTimeout(timeout);
+      const data = (await response.json()) as {
+        success?: boolean;
+        detail?: string;
+        latencyMs?: number;
+      };
+
+      if (data.success) {
+        setModelStates((current) =>
+          current.map((model) =>
+            model.id === modelId
+              ? { ...model, status: "success", latency: data.latencyMs, error: undefined }
+              : model
+          )
+        );
+        return true;
+      }
+
+      setModelStates((current) =>
+        current.map((model) =>
+          model.id === modelId
+            ? { ...model, status: "error", latency: data.latencyMs, error: data.detail || "Connection failed." }
+            : model
+        )
+      );
+      return false;
+    } catch (error) {
+      clearTimeout(timeout);
+      setModelStates((current) =>
+        current.map((model) =>
+          model.id === modelId
+            ? {
+                ...model,
+                status: "error",
+                error:
+                  error instanceof Error && error.name === "AbortError"
+                    ? `Timed out after ${TEST_TIMEOUT_MS / 1000}s`
+                    : "Network error"
+              }
+            : model
+        )
+      );
+      return false;
+    }
+  }
+
+  async function testAllModels() {
+    setIsTestingAll(true);
+    setModelStates(models.map((model) => ({ id: model.id, status: "idle" })));
+
+    for (const model of models) {
+      await testModel(model.id);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    setIsTestingAll(false);
+  }
+
+  async function sendMessage() {
+    if (!inputMessage.trim() || !selectedModel || isChatting || !serverConfigured) return;
+
+    const userMsg: Message = { role: "user", content: inputMessage };
+    const nextMessages = [...messages, userMsg];
+    setMessages(nextMessages);
+    setInputMessage("");
+    setChatError(null);
+    setIsChatting(true);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+
+    try {
+      const response = await fetch("/api/model-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          action: "chat",
+          model: selectedModel,
+          messages: nextMessages.map((message) => ({
+            role: message.role,
+            content: message.content
+          }))
+        })
+      });
+
+      clearTimeout(timeout);
+      const data = (await response.json()) as {
+        detail?: string;
+        message?: { content?: string };
+      };
+
+      if (!response.ok || !data.message?.content) {
+        throw new Error(data.detail || "No response from model.");
+      }
+
+      const assistantMsg: Message = {
+        role: "assistant",
+        content: data.message.content,
+        model: selectedModel
+      };
+      setMessages((current) => [...current, assistantMsg]);
+    } catch (error) {
+      clearTimeout(timeout);
+      const detail =
+        error instanceof Error && error.name === "AbortError"
+          ? `Timed out after ${CHAT_TIMEOUT_MS / 1000}s`
+          : error instanceof Error
+            ? error.message
+            : "Network error. Please try again.";
+      setChatError(detail);
+      setMessages((current) => [
+        ...current,
+        { role: "assistant", content: `Error: ${detail}`, model: selectedModel }
+      ]);
+    } finally {
+      setIsChatting(false);
+    }
+  }
+
+  async function runAutoTest() {
+    if (!serverConfigured || workingModels.length === 0) return;
+
+    setIsAutoTesting(true);
+    setAutoTestResults([]);
+
+    const results: AutoTestResult[] = [];
+    for (const modelState of workingModels) {
+      const startTime = Date.now();
+
+      try {
+        const response = await fetch("/api/model-test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "chat",
+            model: modelState.id,
+            messages: [{ role: "user", content: autoTestPrompt }]
+          })
+        });
+
+        const data = (await response.json()) as {
+          detail?: string;
+          message?: { content?: string };
+        };
+
+        if (response.ok && data.message?.content) {
+          const modelInfo = modelMap.get(modelState.id);
+          results.push({
+            modelId: modelState.id,
+            modelName: modelInfo?.name ?? modelState.id,
+            content: data.message.content,
+            latency: Date.now() - startTime
+          });
+        }
+      } catch {
+        // Skip failed models during auto compare.
+      }
+
+      setAutoTestResults([...results]);
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+
+    setIsAutoTesting(false);
+  }
+
+  function clearChat() {
+    setMessages([]);
+    setAutoTestResults([]);
+    setChatError(null);
+  }
+
   return (
-    <div className="space-y-4">
-      <Panel
-        kicker="Server-managed OpenRouter"
-        title="Test Model Connection"
-        contentClassName="space-y-4"
-      >
-        <div className="grid gap-4 lg:grid-cols-[1.35fr_.65fr]">
-          <div className="space-y-4">
-            <p className="text-sm leading-6 text-body">
-              This page loads all free OpenRouter models using the server-side API key, tests them one by one,
-              and helps you pick a working model for chat.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                className="button-primary"
-                onClick={() => void handleTestAll()}
-                disabled={modelsLoading || !!modelsError || models.length === 0 || testingAll}
-              >
-                {testingAll ? "Testing models one by one..." : "Test all free models"}
-              </button>
-              <button
-                className="button-secondary"
-                onClick={() => window.location.reload()}
-                disabled={modelsLoading}
-              >
-                Refresh model list
-              </button>
-            </div>
-            {modelsError ? (
-              <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
-                {modelsError}
-              </div>
-            ) : null}
-            {modelsNotice ? (
-              <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-200">
-                {modelsNotice}
-              </div>
-            ) : null}
+    <div className="space-y-6">
+      <div className="glass-panel rounded-xl border border-white/8 p-5">
+        <header className="mb-6">
+          <h1 className="bg-gradient-to-r from-cyan-300 via-blue-300 to-violet-300 bg-clip-text text-3xl font-bold text-transparent">
+            OpenRouter Free Models Tester
+          </h1>
+          <p className="mt-1 text-sm text-slate-400">
+            Test all {models.length || OPENROUTER_FREE_MODELS.length} free models and chat with the working ones.
+          </p>
+        </header>
+
+        <div className="rounded-xl border border-white/8 bg-white/5 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <KeyIcon className="h-5 w-5 text-cyan-300" />
+            <h2 className="font-semibold text-white">Server API Key Setup</h2>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-            <div className="inner-panel rounded-xl p-3">
-              <p className="eyebrow">Loaded</p>
-              <p className="mt-2 text-2xl font-semibold text-white">{modelsLoading ? "..." : models.length}</p>
-              <p className="mt-1 text-xs text-slate-400">Free OpenRouter models found</p>
-            </div>
-            <div className="inner-panel rounded-xl p-3">
-              <p className="eyebrow">Working</p>
-              <p className="mt-2 text-2xl font-semibold text-emerald-300">{workingModels.length}</p>
-              <p className="mt-1 text-xs text-slate-400">Models that passed connection test</p>
-            </div>
-            <div className="inner-panel rounded-xl p-3">
-              <p className="eyebrow">Recommended</p>
-              <p className="mt-2 text-sm font-semibold text-white">
-                {recommendedModel ? recommendedModel.name : "Run tests first"}
-              </p>
-              <p className="mt-1 text-xs text-slate-400">
-                {recommendedModel ? "Fastest successful response so far" : "Best chat model will appear here"}
-              </p>
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
+                serverConfigured
+                  ? "bg-emerald-500/15 text-emerald-300"
+                  : "bg-red-500/15 text-red-300"
+              }`}
+            >
+              {serverConfigured ? (
+                <>
+                  <CheckCircleIcon className="h-4 w-4" />
+                  OpenRouter API key detected on server
+                </>
+              ) : (
+                <>
+                  <XCircleIcon className="h-4 w-4" />
+                  OpenRouter API key missing on server
+                </>
+              )}
+            </span>
+            <button
+              onClick={() => window.location.reload()}
+              className="button-secondary !h-10 !px-4 !text-sm"
+            >
+              <RefreshIcon className="mr-2 h-4 w-4" />
+              Refresh
+            </button>
           </div>
+
+          {serverNotice ? <p className="mt-3 text-sm text-slate-400">{serverNotice}</p> : null}
+          {modelsError ? <p className="mt-3 text-sm text-red-400">{modelsError}</p> : null}
+
+          <p className="mt-3 text-xs text-slate-500">
+            Manage your secret in Vercel project settings. OpenRouter keys live at{" "}
+            <a
+              href="https://openrouter.ai/keys"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-cyan-300 hover:underline"
+            >
+              openrouter.ai/keys
+              <ExternalLinkIcon className="h-3 w-3" />
+            </a>
+          </p>
         </div>
-      </Panel>
+      </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.05fr_.95fr]">
-        <Panel kicker="Results" title="Free model status" contentClassName="space-y-3">
-          {modelsLoading ? (
-            <p className="text-sm text-slate-400">Loading free models...</p>
-          ) : (
-            <div className="space-y-2">
-              {models.map((model) => {
-                const result = results[model.id] ?? { status: "idle" as const };
-                const isWorking = result.status === "working";
-                const isFailed = result.status === "failed";
-                const isTesting = result.status === "testing";
+      <div className="flex gap-2">
+        <button
+          onClick={() => setActiveTab("tester")}
+          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === "tester" ? "bg-cyan-600 text-white" : "bg-white/5 text-slate-400 hover:text-white"
+          }`}
+        >
+          <ZapIcon className="h-4 w-4" />
+          Connection Tester
+        </button>
+        <button
+          onClick={() => setActiveTab("chat")}
+          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === "chat" ? "bg-violet-600 text-white" : "bg-white/5 text-slate-400 hover:text-white"
+          }`}
+        >
+          <MessageIcon className="h-4 w-4" />
+          Chat Test
+        </button>
+      </div>
 
-                return (
-                  <div
-                    key={model.id}
-                    className="inner-panel flex flex-col gap-3 rounded-xl p-3 lg:flex-row lg:items-center lg:justify-between"
-                  >
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-semibold text-white">{model.name}</p>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                            isWorking
-                              ? "bg-emerald-500/15 text-emerald-300"
-                              : isFailed
-                                ? "bg-red-500/15 text-red-300"
-                                : isTesting
-                                  ? "bg-cyan-500/15 text-cyan-300"
-                                  : "bg-white/6 text-slate-400"
-                          }`}
-                        >
-                          {result.status}
-                        </span>
+      {activeTab === "tester" ? (
+        <div className="glass-panel overflow-hidden rounded-xl border border-white/8">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <DatabaseIcon className="h-5 w-5 text-violet-300" />
+              <h2 className="font-semibold text-white">Free Models ({models.length})</h2>
+              {workingModels.length > 0 ? (
+                <span className="text-sm text-emerald-300">{workingModels.length} working</span>
+              ) : null}
+              {failedModels.length > 0 ? (
+                <span className="text-sm text-red-300">{failedModels.length} failed</span>
+              ) : null}
+            </div>
+            <button
+              onClick={() => void testAllModels()}
+              disabled={!serverConfigured || isTestingAll || modelsLoading}
+              className="button-primary !h-10 !px-4 !text-sm disabled:opacity-50"
+            >
+              {isTestingAll ? <LoaderIcon className="mr-2 h-4 w-4 animate-spin" /> : <RefreshIcon className="mr-2 h-4 w-4" />}
+              {isTestingAll ? "Testing..." : "Test All Models"}
+            </button>
+          </div>
+
+          {!serverConfigured ? (
+            <div className="p-10 text-center text-slate-500">
+              <KeyIcon className="mx-auto mb-3 h-12 w-12 opacity-50" />
+              <p>Set your OpenRouter key on the server first.</p>
+            </div>
+          ) : null}
+
+          <div className="grid max-h-[640px] gap-2 overflow-y-auto p-4">
+            {modelsLoading ? (
+              <div className="rounded-xl border border-white/8 bg-white/5 p-4 text-sm text-slate-400">
+                Loading curated free models...
+              </div>
+            ) : null}
+
+            {models.map((model) => {
+              const state = modelStates.find((entry) => entry.id === model.id) ?? { id: model.id, status: "idle" as const };
+              return (
+                <div
+                  key={model.id}
+                  className={`rounded-xl border p-3 transition-all ${
+                    state.status === "success"
+                      ? "border-emerald-500/40 bg-emerald-500/10"
+                      : state.status === "error"
+                        ? "border-red-500/30 bg-red-500/10"
+                        : state.status === "testing"
+                          ? "border-cyan-500/30 bg-cyan-500/10"
+                          : "border-white/8 bg-white/4"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-[240px] flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-white">{model.name}</span>
+                        <span className="rounded bg-white/8 px-2 py-0.5 text-xs text-slate-300">{model.size}</span>
+                        {state.status === "success" ? (
+                          <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300">
+                            <CheckCircleIcon className="h-3 w-3" />
+                            Working
+                          </span>
+                        ) : null}
                       </div>
-                      <p className="truncate text-[11px] text-slate-500">{model.id}</p>
-                      {result.detail ? (
-                        <p className={`text-xs leading-5 ${isWorking ? "text-slate-300" : "text-slate-400"}`}>
-                          {result.detail}
-                        </p>
-                      ) : model.description ? (
-                        <p className="text-xs leading-5 text-slate-500">{model.description}</p>
-                      ) : null}
+                      <p className="mt-1 text-sm text-slate-400">{model.desc}</p>
+                      <p className="mt-1 font-mono text-xs text-slate-500">{model.id}</p>
+                      {state.error ? <p className="mt-1 text-xs text-red-300">{state.error}</p> : null}
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-2">
-                      {typeof result.latencyMs === "number" ? (
-                        <span className="rounded-full bg-white/6 px-2.5 py-1 text-[11px] text-slate-300">
-                          {result.latencyMs} ms
-                        </span>
-                      ) : null}
+                    <div className="flex items-center gap-3">
+                      {state.latency ? <span className="text-sm text-emerald-300">{state.latency}ms</span> : null}
+                      {state.status === "success" ? <CheckCircleIcon className="h-5 w-5 text-emerald-300" /> : null}
+                      {state.status === "error" ? <XCircleIcon className="h-5 w-5 text-red-300" /> : null}
+                      {state.status === "testing" ? <LoaderIcon className="h-5 w-5 animate-spin text-cyan-300" /> : null}
                       <button
-                        className="button-secondary !h-8 !px-3 !text-xs"
-                        onClick={() => void runSingleTest(model)}
-                        disabled={testingAll || isTesting}
+                        onClick={() => void testModel(model.id)}
+                        disabled={!serverConfigured || state.status === "testing" || isTestingAll}
+                        className="button-secondary !h-9 !px-3 !text-sm disabled:opacity-50"
                       >
-                        {isTesting ? "Testing..." : "Test"}
+                        Test
                       </button>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </Panel>
-
-        <div className="space-y-4">
-          <Panel kicker="Chat" title="Try a working model" contentClassName="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                Chat model
-              </label>
-              <select
-                className="input-field !h-10 !min-h-0"
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                disabled={chatModelOptions.length === 0}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="glass-panel flex flex-col overflow-hidden rounded-xl border border-white/8">
+          <div className="flex flex-wrap items-center gap-3 border-b border-white/8 p-3">
+            <div className="flex rounded-lg bg-white/5 p-1">
+              <button
+                onClick={() => setChatMode("single")}
+                className={`rounded px-3 py-1.5 text-sm transition-colors ${
+                  chatMode === "single" ? "bg-violet-600 text-white" : "text-slate-400 hover:text-white"
+                }`}
               >
-                {chatModelOptions.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-500">
-                {workingModels.length > 0
-                  ? "Only models that passed the connection test are shown here."
-                  : "Run the connection test first to build a shortlist of working models."}
-              </p>
+                Single Model
+              </button>
+              <button
+                onClick={() => setChatMode("auto")}
+                className={`rounded px-3 py-1.5 text-sm transition-colors ${
+                  chatMode === "auto" ? "bg-violet-600 text-white" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Auto Test All
+              </button>
             </div>
 
-            <div className="glass-panel relative flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-white/5">
-              <div className="flex-1 space-y-4 overflow-y-auto p-4 no-scrollbar">
-                {chatMessages.length === 0 ? (
-                  <div className="flex h-full flex-col items-center justify-center space-y-4 px-6 text-center">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-cyan-500 shadow-lg shadow-violet-500/20">
-                      <CheckCircleIcon className="h-7 w-7 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="font-heading text-lg font-semibold text-white">Ready for chat</h3>
-                      <p className="mt-2 text-sm leading-relaxed text-slate-400">
-                        Pick a model above, then send a message here to confirm it works for real conversation.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
+            {chatMode === "single" ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="input-field !h-10 !min-h-0 !w-[300px]"
+                >
+                  {chatModelOptions.length === 0 ? (
+                    <option value="">No working models - run connection test first</option>
+                  ) : (
+                    chatModelOptions.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+
+                {workingModels.length > 0 ? (
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-400">
+                    <input
+                      type="checkbox"
+                      checked={showOnlyWorking}
+                      onChange={(e) => setShowOnlyWorking(e.target.checked)}
+                      className="rounded border-white/20 bg-transparent"
+                    />
+                    Only working ({workingModels.length})
+                  </label>
+                ) : null}
+              </div>
+            ) : null}
+
+            <button onClick={clearChat} className="button-secondary ml-auto !h-10 !px-4 !text-sm">
+              Clear
+            </button>
+          </div>
+
+          {chatMode === "auto" ? (
+            <div className="border-b border-white/8 bg-white/4 p-4">
+              <div className="mb-3 flex items-center gap-3">
+                <BarChartIcon className="h-5 w-5 text-violet-300" />
+                <h3 className="font-semibold text-white">Auto Test Working Models</h3>
+                <span className="text-sm text-slate-400">({workingModels.length} working models found)</span>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  value={autoTestPrompt}
+                  onChange={(e) => setAutoTestPrompt(e.target.value)}
+                  placeholder="Enter test prompt..."
+                  className="input-field !h-10 !min-h-0 flex-1"
+                />
+                <button
+                  onClick={() => void runAutoTest()}
+                  disabled={!serverConfigured || workingModels.length === 0 || isAutoTesting}
+                  className="button-primary !h-10 !px-4 !text-sm disabled:opacity-50"
+                >
+                  {isAutoTesting ? <LoaderIcon className="mr-2 h-4 w-4 animate-spin" /> : <PlayIcon className="mr-2 h-4 w-4" />}
+                  {isAutoTesting ? "Testing..." : "Run Auto Test"}
+                </button>
+              </div>
+
+              {workingModels.length === 0 ? (
+                <p className="mt-2 text-sm text-amber-300">
+                  Run connection test first to identify working models.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="min-h-[420px] max-h-[560px] flex-1 space-y-4 overflow-y-auto p-4">
+            {chatMode === "single" && messages.length === 0 ? (
+              <div className="py-12 text-center text-slate-500">
+                <MessageIcon className="mx-auto mb-3 h-12 w-12 opacity-50" />
+                {chatModelOptions.length === 0 ? (
                   <>
-                    {chatMessages.map((message, index) => (
-                      <div
-                        key={`${message.role}-${index}`}
-                        className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                      >
-                        <div
-                          className={`flex max-w-[85%] items-start gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
-                        >
-                          <div
-                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 ${message.role === "user" ? "bg-cyan-500/20" : "bg-violet-500/20"}`}
-                          >
-                            {message.role === "user" ? (
-                              <UserIcon className="h-4 w-4 text-cyan-400" />
-                            ) : (
-                              <BotIcon className="h-4 w-4 text-violet-400" />
-                            )}
-                          </div>
-                          <div className="space-y-2">
-                            {message.reasoning_details ? (
-                              <div className="rounded-lg border border-white/5 bg-black/40 p-2 font-mono text-[10px] italic text-slate-500">
-                                <span className="mb-1 block text-[8px] font-bold uppercase tracking-widest text-slate-400">
-                                  Reasoning Process
-                                </span>
-                                {message.reasoning_details}
-                              </div>
-                            ) : null}
-                            <div
-                              className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${message.role === "user"
-                                  ? "rounded-tr-none bg-gradient-to-br from-violet-600 to-indigo-600 text-white"
-                                  : "inner-panel rounded-tl-none text-slate-200"
-                                }`}
-                            >
-                              {message.content}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    <div ref={messagesEndRef} />
+                    <p>No working models available.</p>
+                    <p className="mt-2 text-sm">Go to Connection Tester and test models first.</p>
                   </>
+                ) : (
+                  <p>Start chatting with {modelMap.get(selectedModel)?.name ?? "your selected model"}.</p>
                 )}
               </div>
+            ) : null}
 
-              <div className="border-t border-white/5 bg-black/40 p-4">
-                {chatError ? (
-                  <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">
-                    {chatError}
-                  </div>
-                ) : null}
-                {chatLoading && chatStatus ? (
-                  <div className="mb-3 rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-300">
-                    {chatStatus}
-                  </div>
-                ) : null}
-                <form onSubmit={handleChatSubmit} className="group relative">
-                  <input
-                    className="input-field !bg-white/5 !pr-24 transition-all duration-300 group-hover:!bg-white/10 focus:!bg-white/10"
-                    placeholder={
-                      workingModels.length === 0
-                        ? "Run model tests first..."
-                        : "Ask the selected model anything..."
-                    }
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    disabled={chatLoading || !selectedModel || workingModels.length === 0}
-                  />
-                  <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2">
-                    <button
-                      type="submit"
-                      className="button-primary !h-8 !px-4 !text-xs disabled:opacity-50"
-                      disabled={chatLoading || !selectedModel || !chatInput.trim() || workingModels.length === 0}
+            {chatMode === "auto" && autoTestResults.length === 0 && !isAutoTesting ? (
+              <div className="py-12 text-center text-slate-500">
+                <BarChartIcon className="mx-auto mb-3 h-12 w-12 opacity-50" />
+                <p>Run auto test to compare all working models.</p>
+                <p className="mt-2 text-sm">The same prompt will be sent to each working model.</p>
+              </div>
+            ) : null}
+
+            {chatMode === "single"
+              ? messages.map((message, index) => (
+                  <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`max-w-[80%] rounded-lg px-4 py-3 ${
+                        message.role === "user"
+                          ? "bg-cyan-600 text-white"
+                          : "bg-white/6 text-slate-100"
+                      }`}
                     >
-                      {chatLoading ? "Thinking..." : "Send"}
-                    </button>
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                      {message.model ? (
+                        <p className="mt-1 text-xs text-slate-400">{modelMap.get(message.model)?.name ?? message.model}</p>
+                      ) : null}
+                    </div>
                   </div>
-                </form>
+                ))
+              : autoTestResults.map((result, index) => (
+                  <div key={`${result.modelId}-${index}`} className="rounded-lg border border-white/8 bg-white/6 p-4">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-violet-300">{result.modelName}</span>
+                        <span className="rounded bg-white/8 px-2 py-0.5 text-xs text-slate-300">{result.latency}ms</span>
+                      </div>
+                      <span className="text-xs text-slate-500">#{index + 1}</span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm text-slate-200">{result.content}</p>
+                  </div>
+                ))}
+
+            {chatError ? <div className="text-sm text-red-400">{chatError}</div> : null}
+
+            {isChatting && chatMode === "single" ? (
+              <div className="flex justify-start">
+                <div className="flex items-center gap-2 rounded-lg bg-white/6 px-4 py-3">
+                  <LoaderIcon className="h-4 w-4 animate-spin text-violet-300" />
+                  <span className="text-sm text-slate-400">Thinking...</span>
+                </div>
+              </div>
+            ) : null}
+
+            {isAutoTesting ? (
+              <div className="flex justify-center">
+                <div className="flex items-center gap-2 rounded-lg bg-violet-500/10 px-4 py-3">
+                  <LoaderIcon className="h-4 w-4 animate-spin text-violet-300" />
+                  <span className="text-sm text-slate-300">
+                    Testing {autoTestResults.length + 1} of {workingModels.length} models...
+                  </span>
+                </div>
+              </div>
+            ) : null}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {chatMode === "single" ? (
+            <div className="border-t border-white/8 p-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      void sendMessage();
+                    }
+                  }}
+                  placeholder={
+                    !serverConfigured
+                      ? "Configure the server API key first"
+                      : chatModelOptions.length === 0
+                        ? "Run connection test first"
+                        : "Type your message..."
+                  }
+                  disabled={!serverConfigured || isChatting || chatModelOptions.length === 0}
+                  className="input-field !h-10 !min-h-0 flex-1"
+                />
+                <button
+                  onClick={() => void sendMessage()}
+                  disabled={!serverConfigured || !inputMessage.trim() || isChatting || chatModelOptions.length === 0}
+                  className="button-primary !h-10 !px-4 disabled:opacity-50"
+                >
+                  <SendIcon className="h-5 w-5" />
+                </button>
               </div>
             </div>
-          </Panel>
+          ) : null}
         </div>
-      </div>
+      )}
+
+      <footer className="text-center text-sm text-slate-500">
+        <p>{models.length} curated OpenRouter free models available</p>
+        <p className="mt-1">
+          Tested: {workingModels.length} working | {failedModels.length} failed |{" "}
+          {modelStates.filter((model) => model.status === "idle").length} untested
+        </p>
+      </footer>
     </div>
   );
 }

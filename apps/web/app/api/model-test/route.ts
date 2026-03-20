@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
+import { OPENROUTER_FREE_MODELS } from "@/lib/openrouter-free-models";
 import { getSessionUser } from "@/lib/session";
 
-const MODELS_TIMEOUT_MS = 5_000;
 const TEST_TIMEOUT_MS = 10_000;
 const CHAT_TIMEOUT_MS = 95_000;
 
@@ -10,47 +10,6 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
-
-type OpenRouterModelRecord = {
-  id?: string;
-  name?: string;
-  description?: string;
-  context_length?: number;
-  pricing?: Record<string, string | number | undefined>;
-};
-
-const FALLBACK_FREE_MODELS = [
-  {
-    id: "google/gemini-2.0-flash-exp:free",
-    name: "Gemini 2.0 Flash (Free)",
-    description: "Fastest fallback test model when the OpenRouter catalog is slow."
-  },
-  {
-    id: "meta-llama/llama-3.3-70b-instruct:free",
-    name: "Llama 3.3 70B (Free)",
-    description: "Large general chat model available on OpenRouter free tier."
-  },
-  {
-    id: "qwen/qwen3-30b-a3b:free",
-    name: "Qwen 3 30B (Free)",
-    description: "Reliable multilingual free model for quick connectivity checks."
-  },
-  {
-    id: "deepseek/deepseek-chat-v3-0324:free",
-    name: "DeepSeek V3 (Free)",
-    description: "Strong free chat model when available."
-  },
-  {
-    id: "nvidia/nemotron-3-super-120b-a12b:free",
-    name: "Nemotron 3 Super 120B (Free)",
-    description: "Heavier reasoning model. Slower but still testable."
-  },
-  {
-    id: "stepfun/step-3.5-flash:free",
-    name: "Step 3.5 Flash (Free)",
-    description: "Reasoning-capable free model that can be slower than Gemini."
-  }
-] as const;
 
 function getOpenRouterApiKey(): string | null {
   return (
@@ -69,52 +28,6 @@ function buildHeaders(apiKey: string): Record<string, string> {
     "HTTP-Referer": "https://mixedworld.ai",
     "X-Title": "MixedWorld"
   };
-}
-
-function isZeroPrice(value: unknown): boolean {
-  if (typeof value === "number") {
-    return value === 0;
-  }
-  if (typeof value === "string") {
-    const normalized = Number(value);
-    return Number.isFinite(normalized) && normalized === 0;
-  }
-  return true;
-}
-
-function isFreeModel(model: OpenRouterModelRecord): boolean {
-  if (typeof model.id === "string" && model.id.endsWith(":free")) {
-    return true;
-  }
-
-  const pricing = model.pricing ?? {};
-  return (
-    isZeroPrice(pricing.prompt) &&
-    isZeroPrice(pricing.completion) &&
-    isZeroPrice(pricing.request) &&
-    isZeroPrice(pricing.image)
-  );
-}
-
-function normalizeFreeModels(data: unknown) {
-  const records = Array.isArray((data as { data?: unknown[] })?.data)
-    ? ((data as { data: OpenRouterModelRecord[] }).data ?? [])
-    : [];
-
-  return records
-    .filter((model) => typeof model.id === "string" && typeof model.name === "string")
-    .filter(isFreeModel)
-    .map((model) => ({
-      id: model.id as string,
-      name: model.name as string,
-      description: model.description ?? "",
-      contextLength: model.context_length ?? undefined
-    }))
-    .sort((left, right) => left.name.localeCompare(right.name));
-}
-
-function getFallbackModels() {
-  return FALLBACK_FREE_MODELS.map((model) => ({ ...model }));
 }
 
 function extractMessageContent(payload: unknown): { content: string; reasoning?: string } {
@@ -191,45 +104,15 @@ export async function GET() {
     );
   }
 
-  try {
-    const response = await fetchWithTimeout(
-      "https://openrouter.ai/api/v1/models",
-      {
-        headers: buildHeaders(apiKey),
-        method: "GET"
-      },
-      MODELS_TIMEOUT_MS
-    );
-
-    const payload = await response.json();
-    if (!response.ok) {
-      return NextResponse.json(
-        {
-          configured: true,
-          detail: `OpenRouter model list failed with HTTP ${response.status}.`,
-          models: []
-        },
-        { status: response.status }
-      );
-    }
-
-    return NextResponse.json({
-      configured: true,
-      catalogSource: "live",
-      models: normalizeFreeModels(payload)
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        configured: true,
-        catalogSource: "fallback",
-        detail:
-          "OpenRouter model catalog was slow, so MixedWorld loaded a fallback list of common free models instead.",
-        models: getFallbackModels()
-      },
-      { status: 200 }
-    );
-  }
+  return NextResponse.json({
+    configured: true,
+    catalogSource: "curated",
+    detail: "Using MixedWorld's curated free-model list for faster testing.",
+    models: OPENROUTER_FREE_MODELS.map((model) => ({
+      ...model,
+      description: model.desc
+    }))
+  });
 }
 
 export async function POST(request: Request) {
