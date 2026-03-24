@@ -80,6 +80,7 @@ export function ModelTestConsole() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isChatting, setIsChatting] = useState(false);
+  const [fastMode, setFastMode] = useState(true);
   const [chatMode, setChatMode] = useState<ChatMode>("single");
   const [autoTestResults, setAutoTestResults] = useState<AutoTestResult[]>([]);
   const [isAutoTesting, setIsAutoTesting] = useState(false);
@@ -341,7 +342,12 @@ export function ModelTestConsole() {
     if (!inputMessage.trim() || !selectedModel || isChatting || !hasUsableKey) return;
 
     const userMsg: Message = { role: "user", content: inputMessage };
-    const nextMessages = [...messages, userMsg];
+    const requestMessages = [...messages, userMsg];
+    const assistantIndex = messages.length + 1;
+    const nextMessages: Message[] = [
+      ...requestMessages,
+      { role: "assistant", content: "", model: selectedModel }
+    ];
     setMessages(nextMessages);
     setInputMessage("");
     setChatError(null);
@@ -359,29 +365,89 @@ export function ModelTestConsole() {
           action: "chat",
           model: selectedModel,
           key: savedKey || undefined,
-          messages: nextMessages.map((message) => ({
+          stream: true,
+          fastMode,
+          messages: requestMessages.map((message) => ({
             role: message.role,
             content: message.content
           }))
         })
       });
 
-      clearTimeout(timeout);
-      const data = (await response.json()) as {
-        detail?: string;
-        message?: { content?: string };
-      };
-
-      if (!response.ok || !data.message?.content) {
+      if (!response.ok || !response.body) {
+        const data = (await response.json()) as { detail?: string };
         throw new Error(data.detail || "No response from model.");
       }
 
-      const assistantMsg: Message = {
-        role: "assistant",
-        content: data.message.content,
-        model: selectedModel
-      };
-      setMessages((current) => [...current, assistantMsg]);
+      const decoder = new TextDecoder();
+      const reader = response.body.getReader();
+      let streamBuffer = "";
+      let done = false;
+
+      while (!done) {
+        const result = await reader.read();
+        done = result.done;
+
+        if (result.value) {
+          streamBuffer += decoder.decode(result.value, { stream: true });
+          const lines = streamBuffer.split("\n");
+          streamBuffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data:")) {
+              continue;
+            }
+
+            const dataChunk = trimmed.slice(5).trim();
+            if (!dataChunk || dataChunk === "[DONE]") {
+              continue;
+            }
+
+            try {
+              const json = JSON.parse(dataChunk) as {
+                choices?: Array<{
+                  delta?: {
+                    content?: string | Array<{ text?: string; type?: string }>;
+                  };
+                }>;
+              };
+
+              const delta = json.choices?.[0]?.delta?.content;
+              let deltaText = "";
+              if (typeof delta === "string") {
+                deltaText = delta;
+              } else if (Array.isArray(delta)) {
+                deltaText = delta
+                  .map((part) => (part && typeof part.text === "string" ? part.text : ""))
+                  .join("");
+              }
+
+              if (deltaText) {
+                setMessages((current) =>
+                  current.map((message, index) =>
+                    index === assistantIndex
+                      ? { ...message, content: message.content + deltaText }
+                      : message
+                  )
+                );
+              }
+            } catch {
+              // Ignore non-JSON stream chunks.
+            }
+          }
+        }
+      }
+
+      clearTimeout(timeout);
+
+      setMessages((current) =>
+        current.map((message, index) =>
+          index === assistantIndex && !message.content.trim()
+            ? { ...message, content: "No response from model." }
+            : message
+        )
+      );
     } catch (error) {
       clearTimeout(timeout);
       const detail =
@@ -391,10 +457,13 @@ export function ModelTestConsole() {
             ? error.message
             : "Network error. Please try again.";
       setChatError(detail);
-      setMessages((current) => [
-        ...current,
-        { role: "assistant", content: `Error: ${detail}`, model: selectedModel }
-      ]);
+      setMessages((current) =>
+        current.map((message, index) =>
+          index === assistantIndex
+            ? { ...message, content: `Error: ${detail}` }
+            : message
+        )
+      );
     } finally {
       setIsChatting(false);
     }
@@ -762,6 +831,15 @@ export function ModelTestConsole() {
                     Only working ({workingModels.length})
                   </label>
                 ) : null}
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={fastMode}
+                    onChange={(e) => setFastMode(e.target.checked)}
+                    className="rounded border-white/20 bg-transparent"
+                  />
+                  Fast mode
+                </label>
               </div>
             ) : null}
 

@@ -117,6 +117,8 @@ export async function POST(request: Request) {
     model?: string;
     messages?: ChatMessage[];
     key?: string;
+    stream?: boolean;
+    fastMode?: boolean;
   };
 
   const apiKey = payload.key?.trim() || getOpenRouterApiKey();
@@ -245,6 +247,48 @@ export async function POST(request: Request) {
         return NextResponse.json({ detail: "Missing chat messages." }, { status: 400 });
       }
 
+      const messageWindow = payload.fastMode
+        ? payload.messages.slice(-6)
+        : payload.messages;
+
+      if (payload.stream) {
+        const response = await fetchWithTimeout(
+          "https://openrouter.ai/api/v1/chat/completions",
+          {
+            method: "POST",
+            headers: buildHeaders(apiKey),
+            body: JSON.stringify({
+              model: payload.model,
+              messages: messageWindow,
+              max_tokens: payload.fastMode ? 180 : 700,
+              temperature: payload.fastMode ? 0.2 : undefined,
+              stream: true
+            })
+          },
+          CHAT_TIMEOUT_MS
+        );
+
+        if (!response.ok || !response.body) {
+          const raw = await response.text();
+          return NextResponse.json(
+            {
+              detail: `OpenRouter returned HTTP ${response.status}.`,
+              raw: raw.slice(0, 500)
+            },
+            { status: response.status }
+          );
+        }
+
+        return new Response(response.body, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive"
+          }
+        });
+      }
+
       const response = await fetchWithTimeout(
         "https://openrouter.ai/api/v1/chat/completions",
         {
@@ -252,8 +296,9 @@ export async function POST(request: Request) {
           headers: buildHeaders(apiKey),
           body: JSON.stringify({
             model: payload.model,
-            messages: payload.messages,
-            max_tokens: 700
+            messages: messageWindow,
+            max_tokens: payload.fastMode ? 180 : 700,
+            temperature: payload.fastMode ? 0.2 : undefined
           })
         },
         CHAT_TIMEOUT_MS
