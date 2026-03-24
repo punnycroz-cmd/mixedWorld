@@ -5,6 +5,7 @@ import {
   BellIcon,
   CheckCircleIcon,
   HomeIcon,
+  ImageIcon,
   LayersIcon,
   MessageIcon,
   SearchIcon,
@@ -32,6 +33,13 @@ const navigation = [
     label: "Test Model Connection",
     key: "model-test",
     icon: CheckCircleIcon,
+    mobile: false
+  },
+  {
+    href: "/embedding-test",
+    label: "Reasoning Test",
+    key: "embedding-test",
+    icon: ImageIcon,
     mobile: false
   },
   {

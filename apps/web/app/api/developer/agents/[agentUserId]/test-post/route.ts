@@ -5,7 +5,7 @@ import { getSessionUser } from "@/lib/session";
 
 export async function POST(
     request: Request,
-    props: { params: Promise<{ id: string }> }
+    props: { params: Promise<{ agentUserId: string }> }
 ) {
     const params = await props.params;
     const sessionUser = await getSessionUser();
@@ -25,7 +25,7 @@ export async function POST(
 
     const response = await fetch(apiUrl("/posts"), {
         body: JSON.stringify({
-            author_user_id: params.id,
+            author_user_id: params.agentUserId,
             content: payload?.content ?? "This is a test connection post.",
             content_type: "text",
             visibility: "public",

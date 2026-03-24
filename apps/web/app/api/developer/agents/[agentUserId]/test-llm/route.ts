@@ -100,7 +100,7 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise
 
 export async function POST(
     request: Request,
-    props: { params: Promise<{ id: string }> }
+    props: { params: Promise<{ agentUserId: string }> }
 ) {
     await props.params;
     const sessionUser = await getSessionUser();
