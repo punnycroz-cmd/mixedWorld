@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CopyIcon } from "@/components/icons";
 import { Panel } from "@/components/panel";
@@ -298,10 +298,29 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
   const [testPending, setTestPending] = useState(false);
   const [testResult, setTestResult] = useState<LLMTestResult | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const runtimeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const runtimeBusyRef = useRef(false);
 
   const selectedEntry = agents.find((entry) => entry.agent.id === selectedAgentId) ?? null;
   const selectedRuntime =
     selectedEntry ? runtimeStates[selectedEntry.agent.id] ?? defaultRuntimeState(selectedEntry.agent) : null;
+
+  function cadenceToMs(value: string): number {
+    switch (value) {
+      case "30 seconds":
+        return 30_000;
+      case "5 minutes":
+        return 5 * 60_000;
+      case "15 minutes":
+        return 15 * 60_000;
+      case "30 minutes":
+        return 30 * 60_000;
+      case "60 minutes":
+        return 60 * 60_000;
+      default:
+        return 15 * 60_000;
+    }
+  }
 
   function selectAgent(entry: DeveloperDashboardCard) {
     setSelectedAgentId(entry.agent.id);
@@ -555,6 +574,96 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
     setRuntimeError(null);
     setRuntimeNotice("Browser runtime paused.");
   }
+
+  useEffect(() => {
+    if (runtimeIntervalRef.current) {
+      clearInterval(runtimeIntervalRef.current);
+      runtimeIntervalRef.current = null;
+    }
+
+    if (!selectedEntry || !selectedRuntime?.isRunning) {
+      return;
+    }
+
+    const key = selectedRuntime.modelApiKey.trim();
+    if (!key) {
+      return;
+    }
+
+    const runCycle = async () => {
+      if (runtimeBusyRef.current) {
+        return;
+      }
+      runtimeBusyRef.current = true;
+
+      try {
+        const provider = editState.modelProvider;
+        const model = editState.modelName;
+        const personaHint =
+          editState.personalitySummary.trim() ||
+          editState.worldview.trim() ||
+          "a curious AI";
+        const missionHint = selectedRuntime.sessionGoal.trim() || "Share one brief useful update.";
+        const prompt = `Write one concise social post (under 220 chars). Persona: ${personaHint.slice(0, 300)}. Mission: ${missionHint.slice(0, 260)}. Output only the post text.`;
+
+        updateRuntime(selectedEntry.agent.id, (current) => ({
+          ...current,
+          lastAction: `Running scheduled post (${current.cadence.toLowerCase()})...`
+        }));
+
+        const response = await fetch(`/api/developer/agents/${selectedEntry.agent.id}/test-llm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "post", provider, model, key, prompt })
+        });
+        const result = await response.json();
+
+        if (!response.ok || !result?.success || !result?.content) {
+          throw new Error(result?.detail ?? "Agent generation failed.");
+        }
+
+        await createDeveloperAgentTestPost(selectedEntry.agent.id, result.content);
+
+        const now = formatRuntimeTime(new Date());
+        updateRuntime(selectedEntry.agent.id, (current) => ({
+          ...current,
+          lastHeartbeat: now,
+          lastAction: `Posted automatically at ${now}. Next run in ${current.cadence.toLowerCase()}.`
+        }));
+        setRuntimeError(null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Runtime cycle failed.";
+        setRuntimeError(`Runtime error: ${message}`);
+        updateRuntime(selectedEntry.agent.id, (current) => ({
+          ...current,
+          lastAction: "Runtime hit an error. Check key/model or try a slower cadence."
+        }));
+      } finally {
+        runtimeBusyRef.current = false;
+      }
+    };
+
+    const intervalMs = cadenceToMs(selectedRuntime.cadence);
+    runtimeIntervalRef.current = setInterval(runCycle, intervalMs);
+
+    return () => {
+      if (runtimeIntervalRef.current) {
+        clearInterval(runtimeIntervalRef.current);
+        runtimeIntervalRef.current = null;
+      }
+    };
+  }, [
+    selectedAgentId,
+    selectedEntry,
+    selectedRuntime?.isRunning,
+    selectedRuntime?.cadence,
+    selectedRuntime?.modelApiKey,
+    selectedRuntime?.sessionGoal,
+    editState.modelProvider,
+    editState.modelName,
+    editState.personalitySummary,
+    editState.worldview
+  ]);
 
   async function handleTestConnection() {
     if (!selectedEntry || !selectedRuntime) return;
@@ -867,7 +976,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                         <div className="space-y-2">
                           <label className="text-xs font-bold text-slate-500 tracking-widest">Frequency</label>
                           <select className="input-field" value={selectedRuntime?.cadence ?? "15 minutes"} onChange={(e) => updateRuntime(selectedEntry.agent.id, c => ({ ...c, cadence: e.target.value }))}>
-                            <option>5 minutes</option><option>15 minutes</option><option>30 minutes</option><option>60 minutes</option>
+                            <option>30 seconds</option><option>5 minutes</option><option>15 minutes</option><option>30 minutes</option><option>60 minutes</option>
                           </select>
                         </div>
                         <div className="space-y-2">
