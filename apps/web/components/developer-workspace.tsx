@@ -22,30 +22,14 @@ import type {
 } from "@/lib/types";
 
 const PROVIDER_MODELS: Record<string, { id: string; name: string }[]> = {
-  openai: [
-    { id: "gpt-4o", name: "GPT-4o" },
-    { id: "gpt-4o-mini", name: "GPT-4o Mini" }
-  ],
-  gemini: [
-    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
-    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" }
-  ],
-  grok: [
-    { id: "grok-beta", name: "Grok Beta" },
-    { id: "grok-vision-beta", name: "Grok Vision Beta" },
-    { id: "grok-2-latest", name: "Grok 2" }
-  ],
   openrouter: [
-    { id: "sourceful/riverflow-v2-fast", name: "Riverflow v2 Fast (Image Gen)" },
-    { id: "nvidia/nemotron-3-super-120b-a12b:free", name: "Nemotron 3 Super 120B (Free, Reasoning)" },
-    { id: "meta-llama/llama-3.3-70b-instruct:free", name: "Llama 3.3 70B (Free)" },
-    { id: "meta-llama/llama-4-maverick:free", name: "Llama 4 Maverick (Free)" },
-    { id: "meta-llama/llama-4-scout:free", name: "Llama 4 Scout (Free)" },
-    { id: "google/gemini-2.0-flash-exp:free", name: "Gemini 2.0 Flash (Free)" },
-    { id: "google/gemma-3-27b-it:free", name: "Gemma 3 27B (Free)" },
-    { id: "mistralai/mistral-small-3.1-24b-instruct:free", name: "Mistral Small 3.1 (Free)" },
-    { id: "deepseek/deepseek-chat-v3-0324:free", name: "DeepSeek V3 (Free)" },
-    { id: "qwen/qwen3-30b-a3b:free", name: "Qwen 3 30B (Free)" }
+    { id: "nvidia/nemotron-3-super-120b-a12b:free", name: "NVIDIA Nemotron 3 Super" },
+    { id: "nvidia/nemotron-3-nano-30b-a3b:free", name: "NVIDIA Nemotron 3 Nano" },
+    { id: "google/gemma-3-4b-it:free", name: "Gemma 3 4B" },
+    { id: "google/gemma-3n-e4b-it:free", name: "Gemma 3N E4B" },
+    { id: "arcee-ai/trinity-large-preview:free", name: "Trinity Large" },
+    { id: "liquid/lfm-2.5-1.2b-instruct:free", name: "LFM2.5 1.2B Instruct" },
+    { id: "z-ai/glm-4.5-air:free", name: "GLM 4.5 Air" }
   ]
 };
 
@@ -119,8 +103,8 @@ const defaultFormState = (sessionUser: SessionUser): AgentFormState => ({
   bio: "",
   developerName: sessionUser.displayName,
   developerContact: `browser-${sessionUser.username}`,
-  modelProvider: "openai",
-  modelName: "gpt-social-1",
+  modelProvider: "openrouter",
+  modelName: PROVIDER_MODELS.openrouter[0]?.id ?? "",
   personalitySummary: "",
   thinkingStyle: "Reflective and concise",
   worldview: "",
@@ -135,8 +119,8 @@ const emptyEditState: AgentEditState = {
   bio: "",
   developerName: "",
   developerContact: "",
-  modelProvider: "openai",
-  modelName: "",
+  modelProvider: "openrouter",
+  modelName: PROVIDER_MODELS.openrouter[0]?.id ?? "",
   personalitySummary: "",
   thinkingStyle: "",
   worldview: "",
@@ -213,8 +197,8 @@ function agentToEditState(agent: User): AgentEditState {
     bio: agent.bio,
     developerName: agent.developerName ?? "",
     developerContact: agent.developerContact ?? "",
-    modelProvider: agent.modelProvider ?? "",
-    modelName: agent.modelName ?? "",
+    modelProvider: "openrouter",
+    modelName: agent.modelName ?? PROVIDER_MODELS.openrouter[0]?.id ?? "",
     personalitySummary: agent.personalitySummary ?? "",
     thinkingStyle: agent.thinkingStyle ?? "",
     worldview: agent.worldview ?? "",
@@ -760,24 +744,16 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                 <div className="inner-panel p-5 space-y-4">
                   <h4 className="text-sm font-bold text-white font-heading">Intelligence Engine</h4>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <select className="input-field" value={formState.modelProvider} onChange={(e) => {
-                      const provider = e.target.value;
-                      setFormState(c => ({ ...c, modelProvider: provider, modelName: PROVIDER_MODELS[provider]?.[0]?.id ?? "" }));
-                    }}>
-                      <option value="openai">OpenAI</option>
-                      <option value="gemini">Gemini</option>
-                      <option value="grok">Grok</option>
-                      <option value="openrouter">OpenRouter</option>
+                    <input className="input-field text-slate-400" value="OpenRouter" readOnly />
+                    <select
+                      className="input-field"
+                      value={formState.modelName}
+                      onChange={(e) => setFormState(c => ({ ...c, modelProvider: "openrouter", modelName: e.target.value }))}
+                    >
+                      {PROVIDER_MODELS.openrouter.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
                     </select>
-                    {PROVIDER_MODELS[formState.modelProvider] ? (
-                      <select className="input-field" value={formState.modelName} onChange={(e) => setFormState(c => ({ ...c, modelName: e.target.value }))}>
-                        {PROVIDER_MODELS[formState.modelProvider].map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input className="input-field" placeholder="Model" value={formState.modelName} onChange={(e) => setFormState(c => ({ ...c, modelName: e.target.value }))} />
-                    )}
                   </div>
                 </div>
               </div>
@@ -897,24 +873,16 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
                         <div className="space-y-2">
                           <label className="text-xs font-bold text-slate-500 tracking-widest">Model Config</label>
                           <div className="flex gap-2">
-                            <select className="input-field" value={editState.modelProvider} onChange={(e) => {
-                              const provider = e.target.value;
-                              setEditState(c => ({ ...c, modelProvider: provider, modelName: PROVIDER_MODELS[provider]?.[0]?.id ?? "" }));
-                            }}>
-                              <option value="openai">OpenAI</option>
-                              <option value="gemini">Gemini</option>
-                              <option value="grok">Grok</option>
-                              <option value="openrouter">OpenRouter</option>
+                            <input className="input-field text-slate-400" value="OpenRouter" readOnly />
+                            <select
+                              className="input-field"
+                              value={editState.modelName}
+                              onChange={(e) => setEditState(c => ({ ...c, modelProvider: "openrouter", modelName: e.target.value }))}
+                            >
+                              {PROVIDER_MODELS.openrouter.map((m) => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                              ))}
                             </select>
-                            {PROVIDER_MODELS[editState.modelProvider] ? (
-                              <select className="input-field" value={editState.modelName} onChange={(e) => setEditState(c => ({ ...c, modelName: e.target.value }))}>
-                                {PROVIDER_MODELS[editState.modelProvider].map(m => (
-                                  <option key={m.id} value={m.id}>{m.name}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              <input className="input-field" placeholder="Model" value={editState.modelName} onChange={(e) => setEditState(c => ({ ...c, modelName: e.target.value }))} />
-                            )}
                           </div>
                         </div>
                       </div>

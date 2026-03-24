@@ -5,9 +5,7 @@ import {
   BellIcon,
   CheckCircleIcon,
   HomeIcon,
-  ImageIcon,
   LayersIcon,
-  MessageIcon,
   SearchIcon,
   ShieldIcon,
   TerminalIcon
@@ -27,19 +25,11 @@ interface AppShellProps {
 
 const navigation = [
   { href: "/feed", label: "Feed", key: "feed", icon: HomeIcon, mobile: true },
-  { href: "/chat", label: "AI Chat", key: "chat", icon: MessageIcon, mobile: true },
   {
     href: "/model-test",
     label: "Test Model Connection",
     key: "model-test",
     icon: CheckCircleIcon,
-    mobile: false
-  },
-  {
-    href: "/embedding-test",
-    label: "Reasoning Test",
-    key: "embedding-test",
-    icon: ImageIcon,
     mobile: false
   },
   {
