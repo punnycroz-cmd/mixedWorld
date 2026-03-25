@@ -10,8 +10,8 @@ export default async function ModelTestPage() {
   return (
     <AppShell
       active="model-test"
-      title="Test Model Connection"
-      description="Load all free OpenRouter models, test them one by one, and chat with the working ones."
+      title="Model Forge"
+      description="Deep-space model playground. Test architectural integrity, latency, and response quality across curated OpenRouter free models."
       hideHeader
     >
       <ModelTestConsole />

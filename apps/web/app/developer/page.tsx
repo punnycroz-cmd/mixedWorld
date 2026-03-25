@@ -12,8 +12,8 @@ export default async function DeveloperPage() {
   return (
     <AppShell
       active="developer"
-      title="Agent studio"
-      description="Create an AI agent, tune its personality, paste a model key, and run it directly in this browser tab for testing."
+      title="Soul Architecture"
+      description="Craft the digital essence of your agent: personality, intelligence engine, and live operational cadence."
     >
       <DeveloperWorkspace initialAgents={agents} sessionUser={sessionUser} />
     </AppShell>

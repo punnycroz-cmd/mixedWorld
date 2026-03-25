@@ -6,7 +6,9 @@ import {
   CheckCircleIcon,
   HomeIcon,
   LayersIcon,
+  MessageIcon,
   SearchIcon,
+  SettingsIcon,
   ShieldIcon,
   TerminalIcon
 } from "@/components/icons";
@@ -25,12 +27,14 @@ interface AppShellProps {
 
 const navigation = [
   { href: "/feed", label: "Feed", key: "feed", icon: HomeIcon, mobile: true },
+  { href: "/developer", label: "Studio", key: "developer", icon: TerminalIcon, mobile: true },
+  { href: "/review-queue", label: "Network", key: "queue", icon: LayersIcon, mobile: true },
   {
     href: "/model-test",
-    label: "Test Model Connection",
+    label: "Model Forge",
     key: "model-test",
     icon: CheckCircleIcon,
-    mobile: false
+    mobile: true
   },
   {
     href: "/notifications",
@@ -39,8 +43,6 @@ const navigation = [
     icon: BellIcon,
     mobile: true
   },
-  { href: "/review-queue", label: "Review Queue", key: "queue", icon: LayersIcon, mobile: true },
-  { href: "/developer", label: "Developer", key: "developer", icon: TerminalIcon, mobile: true },
   {
     href: "/moderation",
     label: "Moderation",
@@ -83,8 +85,8 @@ export async function AppShell({
 
   return (
     <div className="min-h-screen pb-20 text-slate-100 md:pb-6 relative z-0">
-      <header className="glass-panel sticky top-0 z-40 rounded-none border-x-0 border-b border-t-0 !bg-black/20 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center justify-between px-4">
+      <header className="glass-panel sticky top-0 z-40 rounded-none border-x-0 border-b border-t-0 !bg-black/40 backdrop-blur-md will-change-transform">
+        <div className="mx-auto flex h-14 w-full max-w-[1440px] items-center justify-between px-4 md:px-6">
           <div className="flex min-w-0 items-center gap-4">
             <Link href="/" className="group flex shrink-0 items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 via-purple-500 to-cyan-500 font-bold text-white shadow-[0_0_20px_rgba(139,92,246,0.5)] ring-1 ring-white/30 transition-all group-hover:scale-105 group-hover:shadow-[0_0_25px_rgba(34,211,238,0.6)]">
@@ -95,7 +97,13 @@ export async function AppShell({
               </span>
             </Link>
 
-            <label className="relative hidden max-w-md flex-1 md:block ml-4">
+            <div className="hidden items-center gap-6 lg:flex lg:ml-4">
+              <Link href="/feed" className={`top-nav-link ${active === "feed" ? "top-nav-link-active" : ""}`}>Feed</Link>
+              <Link href="/developer" className={`top-nav-link ${active === "developer" ? "top-nav-link-active" : ""}`}>Studio</Link>
+              <Link href="/review-queue" className={`top-nav-link ${active === "queue" ? "top-nav-link-active" : ""}`}>Network</Link>
+            </div>
+
+            <label className="relative hidden max-w-md flex-1 md:block ml-2 lg:ml-6">
               <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 aria-label="Search humans and agents"
@@ -144,12 +152,14 @@ export async function AppShell({
         </div>
       </header>
 
-      <div
-        className={`mx-auto grid w-full max-w-[1360px] grid-cols-1 gap-4 px-2 py-4 sm:px-4 ${shellGridClass}`}
-      >
-        <aside className="sticky top-[72px] hidden self-start md:flex md:flex-col md:gap-2">
-          <nav className="glass-panel rounded-xl p-2">
-            <ul className="flex flex-col gap-1">
+      <div className={`mx-auto grid w-full max-w-[1440px] grid-cols-1 gap-4 px-2 py-4 sm:px-4 md:px-6 ${shellGridClass}`}>
+        <aside className="sticky top-[72px] hidden self-start md:flex md:flex-col md:gap-3 h-[calc(100vh-96px)]">
+          <nav className="glass-panel rounded-2xl p-3 flex-1 flex flex-col overflow-hidden">
+            <div className="px-2 pb-4 shrink-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">Human + AI Nexus</p>
+              <p className="mt-1 text-2xl font-bold font-heading text-white">MixedWorld</p>
+            </div>
+            <ul className="flex flex-col gap-1 overflow-y-auto no-scrollbar pb-4 shrink-0">
               {visibleNavigation.map((item) => {
                 const Icon = item.icon;
                 const isActive = active === item.key;
@@ -164,9 +174,25 @@ export async function AppShell({
                 );
               })}
             </ul>
+            <div className="mt-auto pt-2 shrink-0">
+              <ul className="flex flex-col gap-1 border-t border-white/10 pt-2">
+                <li>
+                  <Link href="/developer" className={`nav-link ${active === "developer" ? "nav-link-active" : ""}`}>
+                    <SettingsIcon className="h-4 w-4 shrink-0" />
+                    <span>Settings</span>
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/model-test" className={`nav-link ${active === "model-test" ? "nav-link-active" : ""}`}>
+                    <MessageIcon className="h-4 w-4 shrink-0" />
+                    <span>Support</span>
+                  </Link>
+                </li>
+              </ul>
+            </div>
           </nav>
 
-          <div className="glass-panel rounded-xl p-3">
+          <div className="glass-panel rounded-2xl p-3 shrink-0">
             {sessionUser ? (
               <>
                 <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
@@ -213,7 +239,7 @@ export async function AppShell({
           </div>
         </aside>
 
-        <main className="flex min-w-0 flex-col gap-2">
+        <main className="flex min-w-0 flex-col gap-3">
           {hideHeader ? null : (
             <div className="glass-panel rounded-xl px-4 py-3">
               <p className="eyebrow">MixedWorld</p>
