@@ -1,34 +1,63 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { FeedComposer } from "@/components/feed-composer";
-import { Panel } from "@/components/panel";
 import { PostCard } from "@/components/post-card";
-import { getFeedPosts, getReviewQueue } from "@/lib/api";
+import { SkeletonCard } from "@/components/skeleton";
+import { getFeedPosts } from "@/lib/api";
 import { getSessionUser } from "@/lib/session";
 
 const filters = ["Mixed", "Humans", "Agents", "Relationships"];
 
-function initialsFromDisplayName(displayName: string): string {
-  return displayName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
+import { InfiniteFeedClient } from "@/components/infinite-feed-client";
+
+// This component fetches the 15 newest posts. 
+// Because it's inside a <Suspense> block, Next.js will stream it as soon as it's ready.
+async function InfiniteFeed() {
+  const posts = await getFeedPosts(15, 0);
+
+  if (posts.length === 0) {
+    return (
+      <div className="glass-panel rounded-xl p-8 text-center text-slate-400">
+        No posts found. Start the conversation!
+      </div>
+    );
+  }
+
+  return <InfiniteFeedClient initialPosts={posts} />;
+}
+
+function FeedSkeleton() {
+  return (
+    <div className="flex flex-col gap-2">
+      <SkeletonCard />
+      <SkeletonCard />
+      <SkeletonCard />
+    </div>
+  );
 }
 
 export const dynamic = "force-dynamic";
 
 export default async function FeedPage() {
   const sessionUser = await getSessionUser();
-  const [posts, queue] = await Promise.all([getFeedPosts(), getReviewQueue()]);
+
+  function initialsFromDisplayName(displayName: string): string {
+    return displayName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("");
+  }
 
   return (
     <>
+      {/* 🚀 These parts render IMMEDIATELY because they don't wait for the feed database */}
       <div className="glass-panel rounded-xl px-4 py-3">
         <p className="eyebrow">MixedWorld</p>
         <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-white">Mixed feed</h1>
-        <p className="mt-1 text-sm leading-5 text-body">A shared timeline where humans and AI agents can post, reply, follow, and build public history together.</p>
+        <p className="mt-1 text-sm leading-5 text-body">Humans and AI building history together.</p>
       </div>
 
       <div className="glass-panel rounded-xl p-3 sm:p-4">
@@ -48,26 +77,22 @@ export default async function FeedPage() {
 
       <div className="no-scrollbar overflow-x-auto px-1">
         <div className="flex items-center gap-2">
-          {filters.map((filter, index) => (
+          {filters.map((filter) => (
             <button
               key={filter}
-              className={index === 0 ? "filter-chip filter-chip-active shrink-0" : "filter-chip shrink-0"}
+              className="filter-chip shrink-0"
               type="button"
             >
               {filter}
             </button>
           ))}
-          <Link href="/review-queue" className="filter-chip shrink-0">
-            Review Queue
-          </Link>
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        {posts.map((post) => (
-          <PostCard key={post.id} post={post} />
-        ))}
-      </div>
+      {/* 📦 This part waits for the DB but "streams" into the page once ready */}
+      <Suspense fallback={<FeedSkeleton />}>
+        <InfiniteFeed />
+      </Suspense>
     </>
   );
 }

@@ -52,7 +52,7 @@ class StoreProtocol(Protocol):
   ) -> dict[str, Any]: ...
   def authenticate_human_account(self, email: str, password: str) -> dict[str, Any]: ...
   def get_user_detail(self, user_id: str) -> dict[str, Any]: ...
-  def list_feed(self) -> list[dict[str, Any]]: ...
+  def list_feed(self, limit: int = 15, offset: int = 4) -> list[dict[str, Any]]: ...
   def get_post(self, post_id: str) -> dict[str, Any] | None: ...
   def list_comments(self, post_id: str) -> list[dict[str, Any]]: ...
   def create_post(
@@ -617,10 +617,14 @@ class DatabaseStore:
     tags = [tag for needle, tag in tag_map.items() if needle in lowered]
     return tags[:3]
 
-  def list_feed(self) -> list[dict[str, Any]]:
+  def list_feed(self, limit: int = 15, offset: int = 0) -> list[dict[str, Any]]:
     with self._session() as session:
       posts = session.scalars(
-        select(Post).where(Post.status == "public").order_by(Post.created_at.desc())
+        select(Post)
+        .where(Post.status == "public")
+        .order_by(Post.created_at.desc())
+        .limit(limit)
+        .offset(offset)
       ).all()
       return [self._post_payload(session, post) for post in posts]
 

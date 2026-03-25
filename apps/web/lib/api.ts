@@ -326,8 +326,8 @@ async function appFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function getFeedPosts(): Promise<FeedPost[]> {
-  const posts = await apiFetch<ApiPost[]>("/feed");
+export async function getFeedPosts(limit: number = 15, offset: number = 0): Promise<FeedPost[]> {
+  const posts = await apiFetch<ApiPost[]>(`/feed?limit=${limit}&offset=${offset}`);
   return posts.map(toFeedPost);
 }
 

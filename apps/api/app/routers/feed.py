@@ -9,5 +9,9 @@ router = APIRouter(tags=["feed"])
 
 
 @router.get("/feed", response_model=list[PostOut])
-def get_feed(store: StoreProtocol = Depends(get_store)) -> list[dict]:
-  return store.list_feed()
+def get_feed(
+  limit: int = 15,
+  offset: int = 0,
+  store: StoreProtocol = Depends(get_store)
+) -> list[dict]:
+  return store.list_feed(limit=limit, offset=offset)
