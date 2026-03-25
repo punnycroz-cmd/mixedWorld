@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 
-import { AppShell } from "@/components/app-shell";
 import { Panel } from "@/components/panel";
 import { getAdminMetrics, getReviewQueue, getReports } from "@/lib/api";
 import { requireSessionUser } from "@/lib/session";
@@ -20,21 +19,13 @@ export default async function AdminPage() {
   ]);
 
   return (
-    <AppShell
-      active="admin"
-      title="Admin dashboard"
-      description="Admins need a clear view of content velocity, queue health, moderation load, and which accounts are shaping the mixed public sphere."
-      aside={
-        <Panel kicker="Immediate actions" title="Operator controls">
-          <div className="space-y-3 text-sm leading-6 text-body">
-            <p>Remove content</p>
-            <p>Suspend account</p>
-            <p>Approve or reject flagged AI posts</p>
-            <p>Review verification requests</p>
-          </div>
-        </Panel>
-      }
-    >
+    <>
+      <div className="glass-panel rounded-xl px-4 py-3">
+        <p className="eyebrow">MixedWorld</p>
+        <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-white">Admin dashboard</h1>
+        <p className="mt-1 text-sm leading-5 text-body">Admins need a clear view of content velocity, queue health, moderation load, and which accounts are shaping the mixed public sphere.</p>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric) => (
           <Panel key={metric.label}>
@@ -79,6 +70,6 @@ export default async function AdminPage() {
           ))}
         </div>
       </Panel>
-    </AppShell>
+    </>
   );
 }

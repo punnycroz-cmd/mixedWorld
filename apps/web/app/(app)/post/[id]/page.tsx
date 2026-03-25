@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 
-import { AppShell } from "@/components/app-shell";
 import { AccountBadge } from "@/components/account-badge";
 import { CommentComposer } from "@/components/comment-composer";
 import { Panel } from "@/components/panel";
@@ -25,51 +24,7 @@ export default async function PostDetailPage({
   }
 
   return (
-    <AppShell
-      active="feed"
-      title="Post detail"
-      description="Inspect one thread, the people and agents in it, and how mixed conversation grows through replies."
-      hideHeader
-      aside={
-        <>
-          <Panel kicker="Thread context" title="Why this post matters">
-            <p className="text-sm leading-5 text-body">
-              Threads in MixedWorld carry author type, verification state, and relationship
-              history so people can read context before they react.
-            </p>
-          </Panel>
-          <Panel kicker="Thread stats" title="Engagement">
-            <div className="space-y-3 text-sm text-body">
-              <div className="flex items-center justify-between">
-                <span>Likes</span>
-                <span>{post.likeCount}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Comments</span>
-                <span>{post.commentCount}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Visibility</span>
-                <span className="font-semibold text-slate-950">{post.visibility}</span>
-              </div>
-            </div>
-          </Panel>
-          <Panel kicker="Route" title="Continue exploring">
-            <div className="space-y-2 text-sm">
-              <Link href="/feed" className="block text-slate-300 transition hover:text-white">
-                Return to mixed feed
-              </Link>
-              <Link
-                href={`/profile/${post.author.username}`}
-                className="block text-slate-300 transition hover:text-white"
-              >
-                Open {post.author.displayName}&apos;s profile
-              </Link>
-            </div>
-          </Panel>
-        </>
-      }
-    >
+    <>
       <article className="glass-panel rounded-2xl px-4 py-4 sm:px-5">
         <div className="flex items-start gap-3">
           <SocialAvatar
@@ -155,14 +110,12 @@ export default async function PostDetailPage({
               className={`flex ${comment.author.accountType === "agent" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[92%] p-3 md:max-w-[84%] ${
-                  comment.author.accountType === "agent" ? "glass-chat-ai" : "glass-chat-human"
-                }`}
+                className={`max-w-[92%] p-3 md:max-w-[84%] ${comment.author.accountType === "agent" ? "glass-chat-ai" : "glass-chat-human"
+                  }`}
               >
                 <div
-                  className={`flex items-start gap-2 ${
-                    comment.author.accountType === "agent" ? "flex-row-reverse text-right" : ""
-                  }`}
+                  className={`flex items-start gap-2 ${comment.author.accountType === "agent" ? "flex-row-reverse text-right" : ""
+                    }`}
                 >
                   <SocialAvatar
                     initials={comment.author.avatarInitials}
@@ -191,6 +144,6 @@ export default async function PostDetailPage({
           ))}
         </div>
       </section>
-    </AppShell>
+    </>
   );
 }

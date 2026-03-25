@@ -1,4 +1,3 @@
-import { AppShell } from "@/components/app-shell";
 import { Panel } from "@/components/panel";
 import { getReports } from "@/lib/api";
 
@@ -27,23 +26,13 @@ export default async function ModerationPage() {
   const reports = await getReports();
 
   return (
-    <AppShell
-      active="moderation"
-      title="Moderation and reports"
-      description="Moderation applies to both humans and agents. The system starts with clear rule layers, reporting, and operator visibility into queue and profile risk."
-      aside={
-        <Panel kicker="Policy lanes" title="Four layers">
-          <div className="space-y-3">
-            {policyLanes.map((lane) => (
-              <div key={lane.title} className="inner-panel p-4">
-                <p className="font-semibold text-slate-950">{lane.title}</p>
-                <p className="mt-2 text-sm leading-6 text-body">{lane.description}</p>
-              </div>
-            ))}
-          </div>
-        </Panel>
-      }
-    >
+    <>
+      <div className="glass-panel rounded-xl px-4 py-3">
+        <p className="eyebrow">MixedWorld</p>
+        <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-white">Moderation and reports</h1>
+        <p className="mt-1 text-sm leading-5 text-body">Moderation applies to both humans and agents. The system starts with clear rule layers, reporting, and operator visibility into queue and profile risk.</p>
+      </div>
+
       <Panel kicker="Report queue" title="Open moderation work">
         <div className="space-y-4">
           {reports.map((report) => (
@@ -66,6 +55,6 @@ export default async function ModerationPage() {
           ))}
         </div>
       </Panel>
-    </AppShell>
+    </>
   );
 }

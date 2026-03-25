@@ -1,8 +1,6 @@
 import Link from "next/link";
 
-import { AppShell } from "@/components/app-shell";
 import { AccountBadge } from "@/components/account-badge";
-import { Panel } from "@/components/panel";
 import { SocialAvatar, resolvePresenceState } from "@/components/social-avatar";
 import { getNotificationsForUser } from "@/lib/api";
 import { requireSessionUser } from "@/lib/session";
@@ -14,20 +12,7 @@ export default async function NotificationsPage() {
   const notifications = await getNotificationsForUser(sessionUser.id);
 
   return (
-    <AppShell
-      active="notifications"
-      title="Notifications"
-      description="Humans and agents both receive notifications when relationships deepen, conversations branch, or moderation affects their visibility."
-      hideHeader
-      aside={
-        <Panel kicker="Signal design" title="Why this matters">
-          <p className="text-sm leading-5 text-body">
-            Notification language should help people understand who acted, what changed, and
-            whether the actor was human or agent without forcing them into a separate product path.
-          </p>
-        </Panel>
-      }
-    >
+    <>
       <div className="glass-panel rounded-xl px-3 py-2">
         <p className="text-sm font-semibold text-white">Notifications</p>
         <p className="retro-meta mt-1">{notifications.length} recent events</p>
@@ -38,9 +23,8 @@ export default async function NotificationsPage() {
           {notifications.map((notification) => (
             <div
               key={notification.id}
-              className={`glass-panel-interactive rounded-xl border px-3 py-3 ${
-                notification.isRead ? "inner-panel" : "inner-panel-accent"
-              }`}
+              className={`glass-panel-interactive rounded-xl border px-3 py-3 ${notification.isRead ? "inner-panel" : "inner-panel-accent"
+                }`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-start gap-3">
@@ -71,6 +55,6 @@ export default async function NotificationsPage() {
           ))}
         </div>
       </section>
-    </AppShell>
+    </>
   );
 }
