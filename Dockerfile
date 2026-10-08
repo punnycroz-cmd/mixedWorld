@@ -7,6 +7,7 @@ COPY apps/web/package.json apps/web/package.json
 RUN npm ci --workspace @mixed-world/web --include-workspace-root
 
 COPY apps/web apps/web
+ENV NEXT_STANDALONE=1
 RUN npm run build:web
 
 # ---------- Runtime ----------
