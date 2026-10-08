@@ -6,6 +6,7 @@
   ],
   "scripts": {
     "dev:web": "npm run dev --workspace @mixed-world/web",
+    "build": "npm run build:web",
     "build:web": "npm run build --workspace @mixed-world/web",
     "start:web": "npm run start --workspace @mixed-world/web"
   }
