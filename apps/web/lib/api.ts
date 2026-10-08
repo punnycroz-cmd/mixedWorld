@@ -17,7 +17,10 @@ import { formatApiErrorDetail } from "@/lib/error-detail";
 const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8001";
 
-const apiRoot = `${apiBaseUrl}/api/v1`;
+// In the browser, always go through the same-origin Next.js proxy so the raw
+// API origin (e.g. http://127.0.0.1:8001) never needs to be device-reachable.
+const apiRoot =
+  typeof window !== "undefined" ? "/api/v1" : `${apiBaseUrl}/api/v1`;
 
 interface ApiUserSummary {
   id: string;
@@ -95,6 +98,7 @@ interface ApiReviewQueueItem {
   tags: string[];
   vote_count: number;
   threshold: number;
+  priority?: boolean;
   submitted_at: string;
 }
 
@@ -327,6 +331,16 @@ async function appFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function getFeedPosts(limit: number = 15, offset: number = 0): Promise<FeedPost[]> {
+  // In the browser, go through the Next.js proxy so the raw API origin
+  // never needs to be reachable from the device (e.g. on phones).
+  if (typeof window !== "undefined") {
+    const response = await fetch(`/api/feed?limit=${limit}&offset=${offset}`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Request failed with ${response.status}`);
+    }
+    const posts = (await response.json()) as ApiPost[];
+    return posts.map(toFeedPost);
+  }
   const posts = await apiFetch<ApiPost[]>(`/feed?limit=${limit}&offset=${offset}`);
   return posts.map(toFeedPost);
 }
@@ -370,9 +384,10 @@ export async function getProfileByUsername(username: string): Promise<UserProfil
   }
 }
 
-export async function getNotificationsForUser(userId: string): Promise<NotificationEntry[]> {
+export async function getNotificationsForUser(apiToken: string): Promise<NotificationEntry[]> {
   const notifications = await apiFetch<ApiNotification[]>(
-    `/notifications?user_id=${encodeURIComponent(userId)}`
+    `/notifications`,
+    { headers: { Authorization: `Bearer ${apiToken}` } }
   );
   return notifications.map((notification) => ({
     id: notification.id,
@@ -397,13 +412,15 @@ export async function getReviewQueue(): Promise<ReviewQueueEntry[]> {
     tags: item.tags ?? [],
     voteCount: item.vote_count,
     threshold: item.threshold,
+    priority: item.priority ?? false,
     submittedAt: relativeTimeFromIso(item.submitted_at)
   }));
 }
 
-export async function getDeveloperDashboard(ownerUserId: string): Promise<DeveloperDashboardCard[]> {
+export async function getDeveloperDashboard(apiToken: string): Promise<DeveloperDashboardCard[]> {
   const cards = await apiFetch<ApiDeveloperCard[]>(
-    `/developer/dashboard?owner_user_id=${encodeURIComponent(ownerUserId)}`
+    `/developer/dashboard`,
+    { headers: { Authorization: `Bearer ${apiToken}` } }
   );
   return cards.map((card) => ({
     agent: toUser(card.agent),
@@ -416,8 +433,10 @@ export async function getDeveloperDashboard(ownerUserId: string): Promise<Develo
   }));
 }
 
-export async function getReports(): Promise<ReportEntry[]> {
-  const reports = await apiFetch<ApiReport[]>("/reports");
+export async function getReports(apiToken: string): Promise<ReportEntry[]> {
+  const reports = await apiFetch<ApiReport[]>("/reports", {
+    headers: { Authorization: `Bearer ${apiToken}` }
+  });
   return reports.map((report) => ({
     id: report.id,
     reporter: toUser(report.reporter),
@@ -429,8 +448,10 @@ export async function getReports(): Promise<ReportEntry[]> {
   }));
 }
 
-export async function getAdminMetrics(): Promise<AdminMetric[]> {
-  const metrics = await apiFetch<ApiAdminMetric[]>("/admin/metrics");
+export async function getAdminMetrics(apiToken: string): Promise<AdminMetric[]> {
+  const metrics = await apiFetch<ApiAdminMetric[]>("/admin/metrics", {
+    headers: { Authorization: `Bearer ${apiToken}` }
+  });
   return metrics.map((metric) => ({
     label: metric.label,
     value: metric.value,

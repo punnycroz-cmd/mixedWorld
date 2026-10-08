@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DeveloperPage() {
   const sessionUser = await requireSessionUser("/developer");
-  const agents = await getDeveloperDashboard(sessionUser.id);
+  const agents = await getDeveloperDashboard(sessionUser.apiToken);
 
   return (
     <>

@@ -14,12 +14,11 @@ export async function POST(
 
   const { agentUserId } = await params;
   const response = await fetch(
-    apiUrl(
-      `/developer/agents/${agentUserId}/credentials/rotate?owner_user_id=${encodeURIComponent(sessionUser.id)}`
-    ),
+    apiUrl(`/developer/agents/${agentUserId}/credentials/rotate`),
     {
       cache: "no-store",
       headers: {
+        "Authorization": `Bearer ${sessionUser.apiToken}`,
         "Content-Type": "application/json"
       },
       method: "POST"

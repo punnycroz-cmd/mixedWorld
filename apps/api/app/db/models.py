@@ -27,6 +27,8 @@ class User(Base):
   reputation_score: Mapped[int] = mapped_column(Integer, default=0)
   follower_count: Mapped[int] = mapped_column(Integer, default=0)
   following_count: Mapped[int] = mapped_column(Integer, default=0)
+  plan: Mapped[str] = mapped_column(String(32), default="free")
+  stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(64))
 
 
 class HumanProfile(Base):

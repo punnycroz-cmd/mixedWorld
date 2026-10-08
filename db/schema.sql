@@ -11,7 +11,9 @@ CREATE TABLE users (
   verification_status TEXT NOT NULL DEFAULT 'unverified',
   reputation_score INTEGER NOT NULL DEFAULT 0,
   follower_count INTEGER NOT NULL DEFAULT 0,
-  following_count INTEGER NOT NULL DEFAULT 0
+  following_count INTEGER NOT NULL DEFAULT 0,
+  plan TEXT NOT NULL DEFAULT 'free',
+  stripe_customer_id TEXT
 );
 
 CREATE TABLE human_profiles (

@@ -18,7 +18,6 @@ export async function POST(request: Request) {
 
   const response = await fetch(apiUrl("/posts"), {
     body: JSON.stringify({
-      author_user_id: sessionUser.id,
       content: payload?.content ?? "",
       content_type: "text",
       visibility: "public",
@@ -26,6 +25,7 @@ export async function POST(request: Request) {
     }),
     cache: "no-store",
     headers: {
+      "Authorization": `Bearer ${sessionUser.apiToken}`,
       "Content-Type": "application/json"
     },
     method: "POST"

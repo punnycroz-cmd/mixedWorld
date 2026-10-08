@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import secrets
+import time
 from statistics import median
 from threading import Lock
 from typing import Any, Protocol
@@ -27,6 +28,7 @@ from app.db.models import (
   Report,
   User
 )
+from app.config import get_settings
 from app.security.passwords import hash_password, verify_password
 from app.services.demo_store import DemoStore
 from app.services.redis_store import UpstashRedisStore
@@ -52,7 +54,21 @@ class StoreProtocol(Protocol):
   ) -> dict[str, Any]: ...
   def authenticate_human_account(self, email: str, password: str) -> dict[str, Any]: ...
   def get_user_detail(self, user_id: str) -> dict[str, Any]: ...
-  def list_feed(self, limit: int = 15, offset: int = 4) -> list[dict[str, Any]]: ...
+  def list_feed(self, limit: int = 15, offset: int = 0) -> list[dict[str, Any]]: ...
+  def create_post_for_owned_agent(
+    self,
+    owner_user_id: str,
+    agent_user_id: str,
+    content: str,
+    content_type: str = "text",
+    visibility: str = "public",
+    tags: list[str] | None = None
+  ) -> dict[str, Any]: ...
+  def mark_notification_read(self, user_id: str, notification_id: str) -> None: ...
+  def mark_all_notifications_read(self, user_id: str) -> None: ...
+  def get_billing_context(self, user_id: str) -> dict[str, Any]: ...
+  def link_stripe_customer(self, user_id: str, stripe_customer_id: str) -> None: ...
+  def set_plan_by_stripe_customer(self, stripe_customer_id: str, plan: str) -> bool: ...
   def get_post(self, post_id: str) -> dict[str, Any] | None: ...
   def list_comments(self, post_id: str) -> list[dict[str, Any]]: ...
   def create_post(
@@ -131,6 +147,7 @@ class DatabaseStore:
     self._nonce_lock = Lock()
     self._initialize_lock = Lock()
     self._initialized = False
+    self._settings = get_settings()
 
   def initialize(self) -> None:
     if self._initialized:
@@ -144,9 +161,10 @@ class DatabaseStore:
       self._ensure_compatible_schema()
       with self._session_factory() as session:
         has_users = session.scalar(select(func.count()).select_from(User)) or 0
-        if has_users == 0:
+        if has_users == 0 and self._settings.seed_demo_data:
           self._seed_from_demo(session)
-        self._backfill_seed_metadata(session)
+        if self._settings.seed_demo_data:
+          self._backfill_seed_metadata(session)
         session.commit()
       self._initialized = True
 
@@ -166,6 +184,14 @@ class DatabaseStore:
         if "following_count" not in user_columns:
           connection.exec_driver_sql(
             "ALTER TABLE users ADD COLUMN following_count INTEGER NOT NULL DEFAULT 0"
+          )
+        if "plan" not in user_columns:
+          connection.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT 'free'"
+          )
+        if "stripe_customer_id" not in user_columns:
+          connection.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN stripe_customer_id TEXT"
           )
 
       if inspector.has_table("human_profiles"):
@@ -223,6 +249,7 @@ class DatabaseStore:
 
   def _seed_from_demo(self, session: Session) -> None:
     demo = DemoStore()
+    randomize_credentials = self._settings.seed_demo_random_credentials
 
     for user in demo.users.values():
       session.add(
@@ -252,7 +279,9 @@ class DatabaseStore:
           HumanProfile(
             user_id=user.id,
             email=f"{user.username}@mixedworld.example",
-            password_hash=hash_password("mixedworld"),
+            password_hash=hash_password(
+              secrets.token_urlsafe(18) if randomize_credentials else "mixedworld"
+            ),
             auth_provider="password",
             birth_year_optional=None,
             locale="en-US",
@@ -420,12 +449,18 @@ class DatabaseStore:
     session.flush()
 
     for key, credential in demo.credentials_by_key.items():
+      if randomize_credentials:
+        seed_api_key = f"mwk_live_{credential.agent_user_id.replace('agent-', '')}_{secrets.token_hex(6)}"
+        seed_api_secret = f"mws_{secrets.token_hex(16)}"
+      else:
+        seed_api_key = credential.api_key
+        seed_api_secret = credential.api_secret
       session.add(
         AgentApiCredential(
           id=f"cred-{credential.agent_user_id}",
           agent_user_id=credential.agent_user_id,
-          key_hash=credential.api_key,
-          secret_hash=credential.api_secret,
+          key_hash=seed_api_key,
+          secret_hash=seed_api_secret,
           created_at=self._parse_timestamp(credential.last_credential_rotation),
           revoked_at=None,
           last_used_at=None
@@ -541,7 +576,8 @@ class DatabaseStore:
       "is_autonomous": agent_profile.is_autonomous if agent_profile else None,
       "memory_summary": agent_profile.memory_summary if agent_profile else None,
       "growth_note": public_card.get("growth_note") if agent_profile else None,
-      "location": human_profile.location if human_profile else None
+      "location": human_profile.location if human_profile else None,
+      "plan": user.plan or "free"
     }
 
   def _post_payload(self, session: Session, post: Post) -> dict[str, Any]:
@@ -679,7 +715,14 @@ class DatabaseStore:
   def authenticate_human_account(self, email: str, password: str) -> dict[str, Any]:
     with self._session() as session:
       human_profile = session.scalar(select(HumanProfile).where(HumanProfile.email == email))
-      if human_profile is None or not verify_password(password, human_profile.password_hash):
+      # Run the password through the same PBKDF2 work whether or not the
+      # account exists so response timing does not leak which emails exist.
+      password_hash = (
+        human_profile.password_hash
+        if human_profile is not None
+        else "pbkdf2_sha256$120000$AAAAAAAAAAAAAAAAAAAAAA$BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+      )
+      if human_profile is None or not verify_password(password, password_hash):
         raise ValueError("Invalid email or password.")
       return self._load_user_detail(session, human_profile.user_id)
 
@@ -752,6 +795,19 @@ class DatabaseStore:
       )
       post.comment_count += 1
       session.add(comment)
+      if post.author_user_id != author_user_id:
+        session.add(
+          Notification(
+            id=f"notif-{uuid4().hex[:8]}",
+            user_id=post.author_user_id,
+            type="comment",
+            actor_user_id=author_user_id,
+            entity_type="post",
+            entity_id=post_id,
+            is_read=False,
+            created_at=datetime.now(timezone.utc)
+          )
+        )
       session.commit()
       return self._comment_payload(session, comment)
 
@@ -762,7 +818,40 @@ class DatabaseStore:
     comment_id: str | None = None,
     reaction_type: str = "like"
   ) -> dict[str, Any]:
+    if not post_id and not comment_id:
+      raise ValueError("A reaction must target a post or a comment.")
+
     with self._session() as session:
+      user = session.get(User, user_id)
+      if user is None:
+        raise KeyError(user_id)
+      post = session.get(Post, post_id) if post_id else None
+      comment = session.get(Comment, comment_id) if comment_id else None
+      if post_id and post is None:
+        raise KeyError(post_id)
+      if comment_id and comment is None:
+        raise KeyError(comment_id)
+
+      if post_id:
+        existing = session.scalar(
+          select(Reaction).where(
+            and_(
+              Reaction.user_id == user_id,
+              Reaction.post_id_nullable == post_id,
+              Reaction.reaction_type == reaction_type
+            )
+          )
+        )
+        if existing is not None:
+          return {
+            "ok": True,
+            "created": False,
+            "user_id": user_id,
+            "post_id": post_id,
+            "comment_id": comment_id,
+            "reaction_type": reaction_type
+          }
+
       reaction = Reaction(
         id=f"reaction-{uuid4().hex[:8]}",
         user_id=user_id,
@@ -772,10 +861,8 @@ class DatabaseStore:
         created_at=datetime.now(timezone.utc)
       )
       session.add(reaction)
-      if post_id:
-        post = session.get(Post, post_id)
-        if post is not None:
-          post.like_count += 1
+      if post is not None and reaction_type == "like":
+        post.like_count += 1
       session.commit()
       return {
         "ok": True,
@@ -883,6 +970,8 @@ class DatabaseStore:
         vote_count = session.scalar(
           select(func.count()).select_from(AgentPostQueueVote).where(AgentPostQueueVote.post_id == post.id)
         ) or 0
+        agent_profile = session.get(AgentProfile, post.author_user_id)
+        is_priority = self._owner_plan_for_agent(session, agent_profile) == "pro"
         result.append(
           {
             "id": f"queue-{post.id}",
@@ -893,9 +982,12 @@ class DatabaseStore:
             "tags": self._extract_tags(post.content),
             "vote_count": vote_count,
             "threshold": 40,
-            "submitted_at": self._serialize_timestamp(post.created_at)
+            "submitted_at": self._serialize_timestamp(post.created_at),
+            "priority": is_priority
           }
         )
+      # Pro developers' overflow posts surface first in the review queue.
+      result.sort(key=lambda item: (not item["priority"], item["submitted_at"]))
       return result
 
   def vote_review(self, post_id: str, voter_user_id: str, vote_type: str = "open") -> dict[str, Any]:
@@ -925,6 +1017,9 @@ class DatabaseStore:
             created_at=datetime.now(timezone.utc)
           )
         )
+        # The session factory disables autoflush, so flush explicitly or the
+        # count below misses the vote we just queued.
+        session.flush()
 
       vote_count = session.scalar(
         select(func.count()).select_from(AgentPostQueueVote).where(AgentPostQueueVote.post_id == post_id)
@@ -997,6 +1092,9 @@ class DatabaseStore:
       "last_credential_rotation": self._serialize_timestamp(now)
     }
 
+  def _max_agents_for_plan(self, plan: str | None) -> int:
+    return self._settings.pro_max_agents if plan == "pro" else self._settings.free_max_agents
+
   def _register_agent(
     self,
     session: Session,
@@ -1006,6 +1104,19 @@ class DatabaseStore:
     user_id = f"agent-{uuid4().hex[:8]}"
     now = datetime.now(timezone.utc)
     owner = self._require_human_owner(session, owner_user_id)
+
+    if owner is not None:
+      owned_count = session.scalar(
+        select(func.count()).select_from(AgentProfile).where(
+          AgentProfile.owner_user_id_nullable == owner_user_id
+        )
+      ) or 0
+      max_agents = self._max_agents_for_plan(owner.plan)
+      if owned_count >= max_agents:
+        raise ValueError(
+          f"Your plan allows {max_agents} agent{'s' if max_agents != 1 else ''}. "
+          "Upgrade to Pro to run more agents."
+        )
 
     existing_username = session.scalar(select(User).where(User.username == payload["username"]))
     if existing_username is not None:
@@ -1239,9 +1350,18 @@ class DatabaseStore:
         "relationship_notes": relationship_notes
       }
 
+  def _owner_plan_for_agent(self, session: Session, agent: AgentProfile | None) -> str:
+    if agent is None or not agent.owner_user_id_nullable:
+      return "free"
+    owner = session.get(User, agent.owner_user_id_nullable)
+    return (owner.plan if owner else "free") or "free"
+
   def _rate_limit_status(self, session: Session, agent_user_id: str) -> dict[str, Any]:
     agent = session.get(AgentProfile, agent_user_id)
-    daily_limit = agent.daily_post_limit if agent else 3
+    if agent is not None and self._owner_plan_for_agent(session, agent) == "pro":
+      daily_limit = self._settings.pro_daily_post_limit
+    else:
+      daily_limit = agent.daily_post_limit if agent else 3
     public_posts_today = self._get_daily_public_posts(agent_user_id)
     queue_depth = session.scalar(
       select(func.count()).select_from(Post).where(
@@ -1274,6 +1394,10 @@ class DatabaseStore:
         pass
 
     with self._daily_post_lock:
+      # Drop counters from previous days so the dict cannot grow forever.
+      self._daily_post_counts = {
+        key: value for key, value in self._daily_post_counts.items() if key[1] == day_key
+      }
       return self._daily_post_counts.get((agent_user_id, day_key), 0)
 
   def _increment_daily_public_posts(self, agent_user_id: str, created_at: datetime) -> int:
@@ -1303,6 +1427,83 @@ class DatabaseStore:
       item for item in self.list_review_queue() if item["author"]["id"] == agent_user_id
     ]
 
+  def create_post_for_owned_agent(
+    self,
+    owner_user_id: str,
+    agent_user_id: str,
+    content: str,
+    content_type: str = "text",
+    visibility: str = "public",
+    tags: list[str] | None = None
+  ) -> dict[str, Any]:
+    _ = tags
+    with self._session() as session:
+      self._require_human_owner(session, owner_user_id)
+      agent = session.get(AgentProfile, agent_user_id)
+      user = session.get(User, agent_user_id)
+      if agent is None or user is None or user.account_type != "agent":
+        raise KeyError(agent_user_id)
+      if agent.owner_user_id_nullable != owner_user_id:
+        raise PermissionError("You do not manage this agent.")
+    return self.create_post(
+      author_user_id=agent_user_id,
+      content=content,
+      content_type=content_type,
+      visibility=visibility,
+      tags=tags
+    )
+
+  def mark_notification_read(self, user_id: str, notification_id: str) -> None:
+    with self._session() as session:
+      notification = session.get(Notification, notification_id)
+      if notification is None or notification.user_id != user_id:
+        raise KeyError(notification_id)
+      notification.is_read = True
+      session.commit()
+
+  def mark_all_notifications_read(self, user_id: str) -> None:
+    with self._session() as session:
+      notifications = session.scalars(
+        select(Notification).where(
+          and_(Notification.user_id == user_id, Notification.is_read.is_(False))
+        )
+      ).all()
+      for notification in notifications:
+        notification.is_read = True
+      session.commit()
+
+  def get_billing_context(self, user_id: str) -> dict[str, Any]:
+    with self._session() as session:
+      user = session.get(User, user_id)
+      if user is None:
+        raise KeyError(user_id)
+      profile = session.get(HumanProfile, user_id)
+      return {
+        "user_id": user.id,
+        "email": profile.email if profile else None,
+        "plan": user.plan or "free",
+        "stripe_customer_id": user.stripe_customer_id
+      }
+
+  def link_stripe_customer(self, user_id: str, stripe_customer_id: str) -> None:
+    with self._session() as session:
+      user = session.get(User, user_id)
+      if user is None:
+        raise KeyError(user_id)
+      user.stripe_customer_id = stripe_customer_id
+      session.commit()
+
+  def set_plan_by_stripe_customer(self, stripe_customer_id: str, plan: str) -> bool:
+    with self._session() as session:
+      user = session.scalar(
+        select(User).where(User.stripe_customer_id == stripe_customer_id)
+      )
+      if user is None:
+        return False
+      user.plan = plan
+      session.commit()
+      return True
+
   def register_nonce(self, api_key: str, nonce: str, timestamp: int) -> bool:
     if self._redis_store is not None:
       try:
@@ -1316,11 +1517,19 @@ class DatabaseStore:
         # Fall back to the in-process nonce cache if Redis is unavailable.
         pass
 
+    now = int(time.time())
     with self._nonce_lock:
+      # Store an expiry per nonce and evict expired entries so the in-process
+      # fallback cache cannot grow without bound without Redis.
+      if len(self._seen_nonces) > 10_000:
+        self._seen_nonces = {
+          key: expiry for key, expiry in self._seen_nonces.items() if expiry > now
+        }
       nonce_key = (api_key, nonce)
-      if nonce_key in self._seen_nonces:
+      existing_expiry = self._seen_nonces.get(nonce_key)
+      if existing_expiry is not None and existing_expiry > now:
         return False
-      self._seen_nonces[nonce_key] = timestamp
+      self._seen_nonces[nonce_key] = timestamp + self._nonce_ttl_seconds
       return True
 
   def list_users(self, account_type: str | None = None) -> list[dict[str, Any]]:

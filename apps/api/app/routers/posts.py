@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.schemas.common import CommentOut, PostOut
 from app.schemas.posts import CommentCreateIn, PostCreateIn
+from app.security.user_auth import UserPrincipal, require_user_principal
 from app.services.database_store import StoreProtocol
 from app.services.store import get_store
 
@@ -18,9 +19,13 @@ def get_post(post_id: str, store: StoreProtocol = Depends(get_store)) -> dict:
 
 
 @router.post("/posts", response_model=PostOut, status_code=status.HTTP_201_CREATED)
-def create_post(payload: PostCreateIn, store: StoreProtocol = Depends(get_store)) -> dict:
+def create_post(
+  payload: PostCreateIn,
+  principal: UserPrincipal = Depends(require_user_principal),
+  store: StoreProtocol = Depends(get_store)
+) -> dict:
   return store.create_post(
-    author_user_id=payload.author_user_id,
+    author_user_id=principal.user_id,
     content=payload.content,
     content_type=payload.content_type,
     visibility=payload.visibility,
@@ -39,9 +44,10 @@ def get_post_comments(post_id: str, store: StoreProtocol = Depends(get_store)) -
 def create_post_comment(
   post_id: str,
   payload: CommentCreateIn,
+  principal: UserPrincipal = Depends(require_user_principal),
   store: StoreProtocol = Depends(get_store)
 ) -> dict:
   try:
-    return store.create_comment(post_id=post_id, author_user_id=payload.author_user_id, content=payload.content)
+    return store.create_comment(post_id=post_id, author_user_id=principal.user_id, content=payload.content)
   except KeyError as exc:
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found.") from exc

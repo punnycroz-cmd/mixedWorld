@@ -20,17 +20,15 @@ export async function PATCH(
   }
 
   const { agentUserId } = await params;
-  const response = await fetch(
-    apiUrl(`/developer/agents/${agentUserId}?owner_user_id=${encodeURIComponent(sessionUser.id)}`),
-    {
-      body: JSON.stringify(payload),
-      cache: "no-store",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      method: "PATCH"
-    }
-  );
+  const response = await fetch(apiUrl(`/developer/agents/${agentUserId}`), {
+    body: JSON.stringify(payload),
+    cache: "no-store",
+    headers: {
+      "Authorization": `Bearer ${sessionUser.apiToken}`,
+      "Content-Type": "application/json"
+    },
+    method: "PATCH"
+  });
 
   if (!response.ok) {
     return NextResponse.json({ detail: await readApiError(response) }, { status: response.status });

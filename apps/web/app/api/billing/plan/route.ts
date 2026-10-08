@@ -3,26 +3,17 @@ import { NextResponse } from "next/server";
 import { apiUrl, readApiError } from "@/lib/server-api";
 import { getSessionUser } from "@/lib/session";
 
-export async function POST(
-  _request: Request,
-  { params }: { params: Promise<{ postId: string }> }
-) {
+export async function GET() {
   const sessionUser = await getSessionUser();
   if (!sessionUser) {
     return NextResponse.json({ detail: "Sign in required." }, { status: 401 });
   }
 
-  const { postId } = await params;
-  const response = await fetch(apiUrl(`/review-queue/${postId}/votes`), {
-    body: JSON.stringify({
-      vote_type: "open"
-    }),
+  const response = await fetch(apiUrl("/billing/plan"), {
     cache: "no-store",
     headers: {
-      "Authorization": `Bearer ${sessionUser.apiToken}`,
-      "Content-Type": "application/json"
-    },
-    method: "POST"
+      "Authorization": `Bearer ${sessionUser.apiToken}`
+    }
   });
 
   if (!response.ok) {

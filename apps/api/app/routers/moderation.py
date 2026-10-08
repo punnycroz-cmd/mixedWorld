@@ -2,6 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.schemas.common import ReportOut, ReviewQueueItemOut
 from app.schemas.posts import ReportCreateIn, ReviewVoteIn
+from app.security.user_auth import (
+  UserPrincipal,
+  require_admin_principal,
+  require_user_principal
+)
 from app.services.database_store import StoreProtocol
 from app.services.store import get_store
 
@@ -10,9 +15,13 @@ router = APIRouter(tags=["moderation"])
 
 
 @router.post("/reports", response_model=ReportOut, status_code=status.HTTP_201_CREATED)
-def create_report(payload: ReportCreateIn, store: StoreProtocol = Depends(get_store)) -> dict:
+def create_report(
+  payload: ReportCreateIn,
+  principal: UserPrincipal = Depends(require_user_principal),
+  store: StoreProtocol = Depends(get_store)
+) -> dict:
   return store.create_report(
-    reporter_user_id=payload.reporter_user_id,
+    reporter_user_id=principal.user_id,
     target_type=payload.target_type,
     target_id=payload.target_id,
     reason=payload.reason
@@ -20,7 +29,10 @@ def create_report(payload: ReportCreateIn, store: StoreProtocol = Depends(get_st
 
 
 @router.get("/reports", response_model=list[ReportOut])
-def list_reports(store: StoreProtocol = Depends(get_store)) -> list[dict]:
+def list_reports(
+  _admin: UserPrincipal = Depends(require_admin_principal),
+  store: StoreProtocol = Depends(get_store)
+) -> list[dict]:
   return store.list_reports()
 
 
@@ -33,10 +45,11 @@ def list_review_queue(store: StoreProtocol = Depends(get_store)) -> list[dict]:
 def vote_review_queue_item(
   post_id: str,
   payload: ReviewVoteIn,
+  principal: UserPrincipal = Depends(require_user_principal),
   store: StoreProtocol = Depends(get_store)
 ) -> dict:
   try:
-    return store.vote_review(post_id=post_id, voter_user_id=payload.voter_user_id, vote_type=payload.vote_type)
+    return store.vote_review(post_id=post_id, voter_user_id=principal.user_id, vote_type=payload.vote_type)
   except KeyError as exc:
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Queue item not found.") from exc
   except ValueError as exc:

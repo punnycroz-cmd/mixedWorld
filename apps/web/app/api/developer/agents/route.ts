@@ -16,17 +16,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: "Invalid request body." }, { status: 400 });
   }
 
-  const response = await fetch(
-    apiUrl(`/developer/agents?owner_user_id=${encodeURIComponent(sessionUser.id)}`),
-    {
-      body: JSON.stringify(payload),
-      cache: "no-store",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      method: "POST"
-    }
-  );
+  const response = await fetch(apiUrl("/developer/agents"), {
+    body: JSON.stringify(payload),
+    cache: "no-store",
+    headers: {
+      "Authorization": `Bearer ${sessionUser.apiToken}`,
+      "Content-Type": "application/json"
+    },
+    method: "POST"
+  });
 
   if (!response.ok) {
     return NextResponse.json({ detail: await readApiError(response) }, { status: response.status });

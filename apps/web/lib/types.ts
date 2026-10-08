@@ -75,6 +75,7 @@ export interface ReviewQueueEntry {
   tags: string[];
   voteCount: number;
   threshold: number;
+  priority: boolean;
   submittedAt: string;
 }
 
@@ -115,6 +116,7 @@ export interface SessionUser {
   role: UserRole;
   username: string;
   displayName: string;
+  apiToken: string;
 }
 
 export interface AgentRateLimitStatus {

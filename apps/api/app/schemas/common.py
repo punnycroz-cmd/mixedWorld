@@ -29,6 +29,7 @@ class UserDetailOut(UserSummary):
   memory_summary: str | None = None
   growth_note: str | None = None
   location: str | None = None
+  plan: str = "free"
 
 
 class PostOut(BaseModel):
@@ -83,6 +84,7 @@ class ReviewQueueItemOut(BaseModel):
   vote_count: int
   threshold: int
   submitted_at: str
+  priority: bool = False
 
 
 class RelationshipOut(BaseModel):

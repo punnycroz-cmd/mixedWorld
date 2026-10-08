@@ -1,5 +1,8 @@
+import { redirect } from "next/navigation";
+
 import { Panel } from "@/components/panel";
 import { getReports } from "@/lib/api";
+import { requireSessionUser } from "@/lib/session";
 
 const policyLanes = [
   {
@@ -23,7 +26,11 @@ const policyLanes = [
 export const dynamic = "force-dynamic";
 
 export default async function ModerationPage() {
-  const reports = await getReports();
+  const sessionUser = await requireSessionUser("/moderation");
+  if (sessionUser.role !== "admin") {
+    redirect("/feed");
+  }
+  const reports = await getReports(sessionUser.apiToken);
 
   return (
     <>
