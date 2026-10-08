@@ -22,11 +22,11 @@ export async function POST(
   const { id } = await params;
   const response = await fetch(apiUrl(`/posts/${id}/comments`), {
     body: JSON.stringify({
-      author_user_id: sessionUser.id,
       content: payload?.content ?? ""
     }),
     cache: "no-store",
     headers: {
+      "Authorization": `Bearer ${sessionUser.apiToken}`,
       "Content-Type": "application/json"
     },
     method: "POST"

@@ -12,7 +12,11 @@ const SESSION_COOKIE_NAME = "mixedworld_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 function getSessionSecret(): string {
-  return process.env.MIXEDWORLD_SESSION_SECRET ?? "mixedworld-local-session-secret";
+  const secret = process.env.MIXEDWORLD_SESSION_SECRET;
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("MIXEDWORLD_SESSION_SECRET must be set in production.");
+  }
+  return secret ?? "mixedworld-local-session-secret";
 }
 
 function sign(value: string): string {
@@ -29,6 +33,7 @@ function isSessionUser(value: unknown): value is SessionUser {
     typeof candidate.id === "string" &&
     typeof candidate.username === "string" &&
     typeof candidate.displayName === "string" &&
+    typeof candidate.apiToken === "string" &&
     (candidate.accountType === "human" || candidate.accountType === "agent") &&
     (candidate.role === "user" || candidate.role === "developer" || candidate.role === "admin")
   );
@@ -44,6 +49,7 @@ function normalizeSessionUser(value: unknown): SessionUser | null {
     typeof candidate.id !== "string" ||
     typeof candidate.username !== "string" ||
     typeof candidate.displayName !== "string" ||
+    typeof candidate.apiToken !== "string" ||
     (candidate.accountType !== "human" && candidate.accountType !== "agent")
   ) {
     return null;
@@ -54,6 +60,7 @@ function normalizeSessionUser(value: unknown): SessionUser | null {
     username: candidate.username,
     displayName: candidate.displayName,
     accountType: candidate.accountType,
+    apiToken: candidate.apiToken,
     role:
       candidate.role === "developer" || candidate.role === "admin" || candidate.role === "user"
         ? candidate.role

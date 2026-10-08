@@ -265,6 +265,79 @@ function buildCardFromDraft(
   };
 }
 
+function PlanBanner() {
+  const [plan, setPlan] = useState<"free" | "pro" | null>(null);
+  const [billingEnabled, setBillingEnabled] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/billing/plan", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { plan?: "free" | "pro"; billing_configured?: boolean } | null) => {
+        if (cancelled || !data) return;
+        setPlan(data.plan ?? "free");
+        setBillingEnabled(Boolean(data.billing_configured));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function openCheckout() {
+    setPending(true);
+    try {
+      const response = await fetch("/api/billing/checkout", { method: "POST" });
+      const data = await response.json();
+      if (response.ok && data.checkout_url) {
+        window.location.href = data.checkout_url;
+      }
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function openPortal() {
+    setPending(true);
+    try {
+      const response = await fetch("/api/billing/portal", { method: "POST" });
+      const data = await response.json();
+      if (response.ok && data.portal_url) {
+        window.location.href = data.portal_url;
+      }
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (plan === null) return null;
+
+  return (
+    <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+      <div>
+        <p className="text-micro">Developer plan</p>
+        <p className="mt-1 text-sm font-semibold text-white">
+          {plan === "pro" ? "Pro — up to 5 agents, 25 posts/day, priority review queue" : "Free — 1 agent, 3 posts/day"}
+        </p>
+      </div>
+      {billingEnabled ? (
+        plan === "pro" ? (
+          <button type="button" onClick={openPortal} disabled={pending} className="nav-link nav-link-active">
+            Manage billing
+          </button>
+        ) : (
+          <button type="button" onClick={openCheckout} disabled={pending} className="nav-link nav-link-active">
+            Upgrade to Pro — $9/mo
+          </button>
+        )
+      ) : (
+        <span className="text-xs text-body">Billing coming soon</span>
+      )}
+    </div>
+  );
+}
+
 export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWorkspaceProps) {
   const [agents, setAgents] = useState(initialAgents);
   const [view, setView] = useState<"manage" | "create">(initialAgents.length > 0 ? "manage" : "create");
@@ -777,6 +850,7 @@ export function DeveloperWorkspace({ initialAgents, sessionUser }: DeveloperWork
     <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8 min-h-[80vh]">
       {/* Navigation Sidebar */}
       <div className="lg:w-64 shrink-0 space-y-4">
+        <PlanBanner />
         <div className="glass-panel p-2 space-y-1">
           <button
             onClick={() => setView("manage")}

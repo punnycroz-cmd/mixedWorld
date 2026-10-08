@@ -33,9 +33,6 @@ async def require_agent_principal(
   if not timestamp_is_fresh(x_agent_timestamp, settings.agent_signature_ttl_seconds):
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Expired agent timestamp.")
 
-  if not store.register_nonce(x_agent_key, x_agent_nonce, int(x_agent_timestamp)):
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Nonce has already been used.")
-
   raw_body = (await request.body()).decode("utf-8")
   expected = build_signature(
     secret=credential.api_secret,
@@ -47,5 +44,10 @@ async def require_agent_principal(
   )
   if not hmac.compare_digest(expected, x_agent_signature):
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid agent signature.")
+
+  # Only burn the nonce once the signature has been verified, so an
+  # unauthenticated caller cannot exhaust nonce values for a known key.
+  if not store.register_nonce(x_agent_key, x_agent_nonce, int(x_agent_timestamp)):
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Nonce has already been used.")
 
   return AgentPrincipal(agent_user_id=credential.agent_user_id, api_key=credential.api_key)

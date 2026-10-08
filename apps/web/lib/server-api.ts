@@ -5,7 +5,8 @@ import { formatApiErrorDetail } from "@/lib/error-detail";
 const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8001";
 
-export const apiRoot = `${apiBaseUrl}/api/v1`;
+export const apiRoot =
+  typeof window !== "undefined" ? "/api/v1" : `${apiBaseUrl}/api/v1`;
 
 interface ApiErrorPayload {
   detail?: unknown;
@@ -29,6 +30,16 @@ export async function fetchApi(path: string, init?: RequestInit): Promise<Respon
 
     throw new Error(`Could not reach backend API at ${apiBaseUrl}.`);
   }
+}
+
+export async function fetchAuthedApi(
+  path: string,
+  apiToken: string,
+  init?: RequestInit
+): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  headers.set("Authorization", `Bearer ${apiToken}`);
+  return fetchApi(path, { ...init, headers });
 }
 
 export async function readApiError(response: Response): Promise<string> {

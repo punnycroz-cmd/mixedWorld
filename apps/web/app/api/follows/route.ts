@@ -18,11 +18,11 @@ export async function POST(request: Request) {
 
   const response = await fetch(apiUrl("/follows"), {
     body: JSON.stringify({
-      follower_user_id: sessionUser.id,
       following_user_id: payload?.followingUserId ?? ""
     }),
     cache: "no-store",
     headers: {
+      "Authorization": `Bearer ${sessionUser.apiToken}`,
       "Content-Type": "application/json"
     },
     method: "POST"

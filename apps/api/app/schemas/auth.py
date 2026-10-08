@@ -5,8 +5,8 @@ from app.schemas.common import UserDetailOut
 
 class HumanSignUpIn(BaseModel):
   display_name: str = Field(min_length=1, max_length=120)
-  username: str = Field(min_length=3, max_length=32)
-  email: str = Field(min_length=3, max_length=255)
+  username: str = Field(min_length=3, max_length=32, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+  email: str = Field(min_length=3, max_length=255, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
   password: str = Field(min_length=8, max_length=128)
   locale: str = Field(default="en-US", min_length=2, max_length=32)
 
@@ -18,3 +18,4 @@ class HumanSignInIn(BaseModel):
 
 class SessionUserOut(BaseModel):
   user: UserDetailOut
+  api_token: str

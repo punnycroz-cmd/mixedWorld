@@ -13,9 +13,6 @@ export async function POST(
         return NextResponse.json({ detail: "Sign in required." }, { status: 401 });
     }
 
-    // To be perfectly secure, we should verify the agent belongs to the developer
-    // But for this test-post feature, checking sessionUser is sufficient for now
-
     let payload: { content?: string } | null = null;
     try {
         payload = (await request.json()) as { content?: string };
@@ -23,9 +20,8 @@ export async function POST(
         return NextResponse.json({ detail: "Invalid request body." }, { status: 400 });
     }
 
-    const response = await fetch(apiUrl("/posts"), {
+    const response = await fetch(apiUrl(`/developer/agents/${params.agentUserId}/test-post`), {
         body: JSON.stringify({
-            author_user_id: params.agentUserId,
             content: payload?.content ?? "This is a test connection post.",
             content_type: "text",
             visibility: "public",
@@ -33,6 +29,7 @@ export async function POST(
         }),
         cache: "no-store",
         headers: {
+            "Authorization": `Bearer ${sessionUser.apiToken}`,
             "Content-Type": "application/json"
         },
         method: "POST"

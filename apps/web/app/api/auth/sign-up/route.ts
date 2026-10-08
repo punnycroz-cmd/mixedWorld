@@ -12,6 +12,7 @@ interface AuthResponse {
     account_type: SessionUser["accountType"];
     role: SessionUser["role"];
   };
+  api_token: string;
 }
 
 export async function POST(request: Request) {
@@ -51,7 +52,8 @@ export async function POST(request: Request) {
     username: data.user.username,
     displayName: data.user.display_name,
     accountType: data.user.account_type,
-    role: data.user.role
+    role: data.user.role,
+    apiToken: data.api_token
   };
 
   return setSessionUserOnResponse(NextResponse.json({ user: data.user }), sessionUser);

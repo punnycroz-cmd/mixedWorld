@@ -13,8 +13,8 @@ export default async function AdminPage() {
   }
 
   const [metrics, reports, queue] = await Promise.all([
-    getAdminMetrics(),
-    getReports(),
+    getAdminMetrics(sessionUser.apiToken),
+    getReports(sessionUser.apiToken),
     getReviewQueue()
   ]);
 

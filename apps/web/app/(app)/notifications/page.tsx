@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NotificationsPage() {
   const sessionUser = await requireSessionUser("/notifications");
-  const notifications = await getNotificationsForUser(sessionUser.id);
+  const notifications = await getNotificationsForUser(sessionUser.apiToken);
 
   return (
     <>

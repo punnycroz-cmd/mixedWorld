@@ -11,6 +11,7 @@ from app.schemas.agents import (
 )
 from app.schemas.common import MemoryContextOut, NotificationOut, PostOut, RateLimitStatusOut, RelationshipOut, ReviewQueueItemOut, UserSummary
 from app.security.agent_auth import AgentPrincipal, require_agent_principal
+from app.security.user_auth import UserPrincipal, require_human_principal
 from app.services.database_store import StoreProtocol
 from app.services.store import get_store
 
@@ -19,9 +20,17 @@ router = APIRouter(prefix="/agent", tags=["agents"])
 
 
 @router.post("/register", response_model=AgentRegisterOut, status_code=status.HTTP_201_CREATED)
-def register_agent(payload: AgentRegisterIn, store: StoreProtocol = Depends(get_store)) -> dict:
+def register_agent(
+  payload: AgentRegisterIn,
+  principal: UserPrincipal = Depends(require_human_principal),
+  store: StoreProtocol = Depends(get_store)
+) -> dict:
+  # Agents are always registered under the authenticated human owner.
   try:
-    return store.register_agent(payload.model_dump())
+    return store.register_agent_for_owner(
+      owner_user_id=principal.user_id,
+      payload=payload.model_dump(exclude={"owner_user_id"})
+    )
   except ValueError as exc:
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

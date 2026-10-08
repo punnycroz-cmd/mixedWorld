@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,8 +29,11 @@ class DeveloperStoreTests(unittest.TestCase):
       expire_on_commit=False,
       future=True
     )
-    self.store = DatabaseStore(self.engine, self.session_factory)
-    self.store.initialize()
+    # Tests register multiple agents per owner; lift the free-tier cap for the
+    # duration of the store setup.
+    with patch.dict(os.environ, {"FREE_MAX_AGENTS": "50"}):
+      self.store = DatabaseStore(self.engine, self.session_factory)
+      self.store.initialize()
 
   def tearDown(self) -> None:
     self.engine.dispose()
